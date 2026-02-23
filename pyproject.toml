@@ -1,0 +1,63 @@
+[tool.poetry]
+name = "slip-stream"
+version = "0.1.0"
+description = "JSON Schema-driven hexagonal backend framework for FastAPI + MongoDB"
+authors = ["draw"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "slip_stream"}]
+keywords = ["fastapi", "mongodb", "hexagonal", "schema-driven", "crud", "pydantic"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = ">=0.115.0"
+motor = "^3.4.0"
+pydantic = ">=2.0.0"
+pymongo = ">=4.0.0"
+pyyaml = {version = ">=6.0", optional = true}
+xmltodict = {version = ">=0.13.0", optional = true}
+dotted-dict = "^1.1.3"
+
+[tool.poetry.extras]
+yaml = ["pyyaml"]
+xml = ["xmltodict"]
+all = ["pyyaml", "xmltodict"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.24.0"
+mongomock-motor = ">=0.0.34"
+httpx = ">=0.27.0"
+black = ">=24.0.0"
+mypy = ">=1.0.0"
+ruff = ">=0.4.0"
+pyyaml = ">=6.0"
+xmltodict = ">=0.13.0"
+pdoc = "^16.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_return_any = true
+warn_unused_configs = true

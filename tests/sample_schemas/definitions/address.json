@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "street": { "type": "string" },
+    "city": { "type": "string" },
+    "postal_code": { "type": "string" }
+  },
+  "required": ["street", "city"]
+}

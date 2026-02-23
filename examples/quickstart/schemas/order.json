@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Order",
+  "description": "A store order for a pet (inspired by the OpenAPI Petstore example).",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["pet_id", "quantity"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "entity_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "type": "string", "default": "1.0.0" },
+    "record_version": { "type": "integer", "default": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "deleted_at": { "type": "string", "format": "date-time" },
+    "created_by": { "type": "string" },
+    "updated_by": { "type": "string" },
+    "deleted_by": { "type": "string" },
+    "pet_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the pet being ordered"
+    },
+    "quantity": {
+      "type": "integer",
+      "description": "Number of pets ordered",
+      "default": 1
+    },
+    "ship_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Estimated ship date"
+    },
+    "status": {
+      "type": "string",
+      "description": "Order status (placed, approved, delivered)",
+      "default": "placed"
+    },
+    "complete": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the order has been completed"
+    }
+  }
+}
