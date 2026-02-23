@@ -153,6 +153,6 @@ class FileSchemaStorage:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             logger.error("Error reading schema file %s: %s", path, e)
             return None

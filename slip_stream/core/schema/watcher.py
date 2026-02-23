@@ -264,7 +264,7 @@ class SchemaWatcher:
         if existing is not None:
             existing.cancel()
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         handle = loop.call_later(
             self._debounce_seconds,
             self._fire_reload,
@@ -310,7 +310,7 @@ class SchemaWatcher:
         logger.info("SchemaWatcher: reloaded schema '%s' v%s from %s", name, version, path)
 
         if self._on_reload is not None:
-            asyncio.get_event_loop().create_task(
+            asyncio.get_running_loop().create_task(
                 self._on_reload(name, version, schema),
             )
 

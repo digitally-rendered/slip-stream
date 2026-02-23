@@ -93,7 +93,7 @@ class RegoPolicyFilter(FilterBase):
                 status_code=503,
                 body=json.dumps({
                     "error": "Policy evaluation unavailable",
-                    "detail": str(e),
+                    "detail": "Policy service temporarily unavailable",
                 }),
                 headers={"Content-Type": "application/json"},
             )

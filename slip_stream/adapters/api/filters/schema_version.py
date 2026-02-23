@@ -155,16 +155,3 @@ class SchemaVersionFilter(FilterBase):
 
         return None
 
-    async def _read_body(self, response: Response) -> bytes:
-        """Read response body from body_iterator or body attribute."""
-        if hasattr(response, "body_iterator"):
-            chunks = []
-            async for chunk in response.body_iterator:
-                if isinstance(chunk, str):
-                    chunks.append(chunk.encode("utf-8"))
-                else:
-                    chunks.append(chunk)
-            return b"".join(chunks)
-        elif hasattr(response, "body"):
-            return response.body
-        return b""

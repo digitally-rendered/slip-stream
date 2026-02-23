@@ -39,6 +39,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -730,7 +731,6 @@ class SlipStreamRegistry:
         closure and delegates to the ``_stream_bridge`` or to any
         ``StreamAdapter`` instances found in ``ctx.extras["stream_adapters"]``.
         """
-        import time
 
         topic_template = entry.topic or "slip-stream.{schema_name}.{operation}"
         key_template = entry.key or "{entity_id}"

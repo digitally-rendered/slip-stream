@@ -169,9 +169,9 @@ class SchemaRegistry:
         # Save to disk if schema_dir is configured
         if self._schema_dir is not None:
             schema_path = self._schema_dir / f"{name}.json"
+            schema_to_save = {**schema, "version": version}
             with open(schema_path, "w", encoding="utf-8") as f:
-                schema["version"] = version
-                json.dump(schema, f, indent=2)
+                json.dump(schema_to_save, f, indent=2)
 
     async def sync_from_storage(self, storage: Any) -> None:
         """Load all schema versions from a storage backend into memory.

@@ -65,6 +65,9 @@ class DatabaseManager:
             logger.info("MongoDB connection verified (ping OK)")
         except PyMongoError:
             logger.error("MongoDB connection failed — ping to %s/%s failed", self.mongo_uri, self.database_name)
+            self.client.close()
+            self.client = None
+            self.db = None
             raise
 
     async def close(self) -> None:
