@@ -63,6 +63,18 @@ _VALID_CHANNELS = frozenset({"*", "rest", "graphql"})
 """Valid values for the ``channel`` parameter on decorators."""
 
 
+_VALID_BACKENDS = frozenset({"mongo", "sql"})
+"""Valid values for the ``backend`` parameter on ``storage()``."""
+
+
+@dataclass
+class _StorageEntry:
+    """Internal record for a ``storage()`` registration."""
+
+    schema_name: str
+    backend: str
+
+
 @dataclass
 class _HandlerEntry:
     """Internal record for a ``@handler`` registration."""
@@ -113,6 +125,7 @@ class SlipStreamRegistry:
         self._transforms_before: list[_HookEntry] = []
         self._transforms_after: list[_HookEntry] = []
         self._on_hooks: list[_HookEntry] = []
+        self._storage_entries: list[_StorageEntry] = []
 
     def handler(
         self,
@@ -381,6 +394,53 @@ class SlipStreamRegistry:
             return fn
 
         return decorator
+
+    def storage(self, schema: str, *, backend: str = "mongo") -> Callable[[Any], Any]:
+        """Assign a storage backend for a schema.
+
+        Can be used as a direct call or as a no-op decorator on a class/function
+        to visually co-locate the routing decision with the entity definition.
+
+        Args:
+            schema: Schema name (e.g., ``"widget"``).
+            backend: ``"mongo"`` or ``"sql"``.
+
+        Returns:
+            A no-op decorator (returns the decorated object unchanged).
+
+        Raises:
+            ValueError: If *backend* is not a recognised value.
+
+        Example::
+
+            registry.storage("widget", backend="sql")
+
+            # Or as a decorator:
+            @registry.storage("order", backend="sql")
+            class OrderConfig:
+                pass
+        """
+        if backend not in _VALID_BACKENDS:
+            raise ValueError(
+                f"Unknown storage backend '{backend}'. "
+                f"Must be one of: {sorted(_VALID_BACKENDS)}"
+            )
+
+        self._storage_entries.append(
+            _StorageEntry(schema_name=schema, backend=backend)
+        )
+
+        def decorator(fn: Any) -> Any:
+            return fn
+
+        return decorator
+
+    def get_storage_entries(self) -> list[_StorageEntry]:
+        """Return all registered storage entries.
+
+        Used by ``SlipStream.lifespan()`` to build the ``StorageConfig``.
+        """
+        return list(self._storage_entries)
 
     def apply(
         self,

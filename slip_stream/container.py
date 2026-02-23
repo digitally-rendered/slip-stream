@@ -39,6 +39,7 @@ from pydantic import BaseModel
 from slip_stream.adapters.persistence.db.repository_factory import RepositoryFactory
 from slip_stream.core.domain.base import BaseDocument
 from slip_stream.core.schema.registry import SchemaRegistry
+from slip_stream.core.storage import StorageBackend, StorageConfig
 from slip_stream.core.services.generic import (
     GenericCreateService,
     GenericDeleteService,
@@ -93,6 +94,7 @@ class EntityRegistration:
     controller_factory: Any | None = None
     handler_overrides: dict[str, Any] = field(default_factory=dict)
     version_models: dict[str, tuple] = field(default_factory=dict)
+    storage_backend: str = "mongo"
 
 
 class EntityContainer:
@@ -114,12 +116,16 @@ class EntityContainer:
         repositories_module: str | None = None,
         services_module: str | None = None,
         controllers_module: str | None = None,
+        storage_config: StorageConfig | None = None,
+        sql_tables: dict[str, Any] | None = None,
     ) -> None:
         self._registrations: dict[str, EntityRegistration] = {}
         self._models_module = models_module
         self._repositories_module = repositories_module
         self._services_module = services_module
         self._controllers_module = controllers_module
+        self._storage_config = storage_config or StorageConfig()
+        self._sql_tables: dict[str, Any] = dict(sql_tables or {})
 
     def resolve_all(self, schema_names: list[str]) -> None:
         """Resolve and register every schema name in *schema_names*."""
@@ -213,6 +219,7 @@ class EntityContainer:
             services=services,
             controller_factory=controller_factory,
             handler_overrides=handler_overrides,
+            storage_backend=self._storage_config.get(schema_name).value,
         )
 
     def _resolve_document_model(
@@ -271,6 +278,7 @@ class EntityContainer:
         create_model: type[BaseModel],
         update_model: type[BaseModel],
     ) -> type:
+        # 1. Custom repository override always wins
         if self._repositories_module:
             custom = _try_import(
                 f"{self._repositories_module}.{schema_name}_repository",
@@ -278,6 +286,23 @@ class EntityContainer:
             )
             if custom is not None:
                 return cast(type, custom)
+
+        # 2. Check storage config for SQL routing
+        backend = self._storage_config.get(schema_name)
+        if backend == StorageBackend.SQL and schema_name in self._sql_tables:
+            from slip_stream.adapters.persistence.db.sql_repository_factory import (
+                SQLRepositoryFactory,
+            )
+
+            return SQLRepositoryFactory.create(
+                schema_name=schema_name,
+                table=self._sql_tables[schema_name],
+                doc_model=doc_model,
+                create_model=create_model,
+                update_model=update_model,
+            )
+
+        # 3. Default: MongoDB
         return RepositoryFactory.create(
             schema_name=schema_name,
             doc_model=doc_model,
@@ -312,6 +337,8 @@ def init_container(
     repositories_module: str | None = None,
     services_module: str | None = None,
     controllers_module: str | None = None,
+    storage_config: StorageConfig | None = None,
+    sql_tables: dict[str, Any] | None = None,
 ) -> EntityContainer:
     """Create, populate, and store the module-level container singleton.
 
@@ -323,6 +350,8 @@ def init_container(
         repositories_module: Dotted path prefix for custom repository modules.
         services_module: Dotted path prefix for custom service modules.
         controllers_module: Dotted path prefix for custom controller modules.
+        storage_config: Optional ``StorageConfig`` for multi-backend routing.
+        sql_tables: Optional mapping of schema names to SQLAlchemy ``Table`` objects.
 
     Returns:
         The populated container instance (also stored as module singleton).
@@ -333,6 +362,8 @@ def init_container(
         repositories_module=repositories_module,
         services_module=services_module,
         controllers_module=controllers_module,
+        storage_config=storage_config,
+        sql_tables=sql_tables,
     )
     container.resolve_all(schema_names)
     _container = container

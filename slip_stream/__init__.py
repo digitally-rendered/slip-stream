@@ -87,8 +87,13 @@ try:
         SQLRepository,
         build_table_from_schema,
     )
+    from slip_stream.adapters.persistence.db.sql_repository_factory import (
+        SQLRepositoryFactory,
+    )
 except ImportError:
     pass
+from slip_stream.config import SlipStreamConfig
+from slip_stream.core.storage import StorageBackend, StorageConfig
 from slip_stream.sdk_generator import generate_sdk
 from slip_stream.core.ports.repository import RepositoryPort
 from slip_stream.core.ports.schema_storage import SchemaStoragePort
@@ -197,6 +202,12 @@ __all__ = [
     # SQL persistence
     "SQLRepository",
     "build_table_from_schema",
+    "SQLRepositoryFactory",
+    # Storage routing
+    "StorageBackend",
+    "StorageConfig",
+    # Configuration
+    "SlipStreamConfig",
     # SDK generation
     "generate_sdk",
     # Database

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence,
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.params import Body
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from slip_stream.adapters.api.dependencies import default_get_current_user
 from slip_stream.adapters.persistence.db.crud_factory import CRUDFactory
@@ -19,6 +18,11 @@ from slip_stream.core.events import EventBus, HookError
 from slip_stream.core.operation import OperationExecutor
 from slip_stream.core.query import QueryDSL, QueryValidationError, parse_sort_param
 from slip_stream.core.schema.registry import SchemaRegistry
+
+try:
+    from motor.motor_asyncio import AsyncIOMotorDatabase
+except ImportError:
+    AsyncIOMotorDatabase = Any  # type: ignore[misc,assignment]
 
 if TYPE_CHECKING:
     from slip_stream.container import EntityRegistration
@@ -424,7 +428,7 @@ class EndpointFactory:
         async def create(
             request: Request,
             data: create_model = Body(...),  # type: ignore[valid-type]
-            db: AsyncIOMotorDatabase = Depends(get_db),
+            db: Any = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> Any:
             ctx = RequestContext.from_request(
@@ -450,7 +454,7 @@ class EndpointFactory:
         async def get_by_id(
             request: Request,
             entity_id: Union[str, uuid.UUID],
-            db: AsyncIOMotorDatabase = Depends(get_db),
+            db: Any = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> Any:
             parsed_id = _parse_entity_id(entity_id, schema_name)
@@ -508,7 +512,7 @@ class EndpointFactory:
                     "Example: -created_at,name"
                 ),
             ),
-            db: AsyncIOMotorDatabase = Depends(get_db),
+            db: Any = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> Any:
             # Parse where clause
@@ -562,7 +566,7 @@ class EndpointFactory:
             request: Request,
             entity_id: Union[str, uuid.UUID],
             data: update_model = Body(...),  # type: ignore[valid-type]
-            db: AsyncIOMotorDatabase = Depends(get_db),
+            db: Any = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> Any:
             parsed_id = _parse_entity_id(entity_id, schema_name)
@@ -600,7 +604,7 @@ class EndpointFactory:
         async def delete(
             request: Request,
             entity_id: Union[str, uuid.UUID],
-            db: AsyncIOMotorDatabase = Depends(get_db),
+            db: Any = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> None:
             parsed_id = _parse_entity_id(entity_id, schema_name)
