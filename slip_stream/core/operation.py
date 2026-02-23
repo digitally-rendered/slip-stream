@@ -164,7 +164,14 @@ class OperationExecutor:
         else:
             repo = self.registration.repository_class(ctx.db)
             service = self.registration.services["list"](repo)
-            ctx.result = await service.execute(skip=ctx.skip, limit=ctx.limit)
+            kwargs: Dict[str, Any] = {"skip": ctx.skip, "limit": ctx.limit}
+            if getattr(ctx, "filter_criteria", None):
+                kwargs["filter_criteria"] = ctx.filter_criteria
+            if getattr(ctx, "sort_by", None):
+                kwargs["sort_by"] = ctx.sort_by
+            if getattr(ctx, "sort_order", None) is not None:
+                kwargs["sort_order"] = ctx.sort_order
+            ctx.result = await service.execute(**kwargs)
 
         if self.event_bus:
             await self.event_bus.emit("post_list", ctx)

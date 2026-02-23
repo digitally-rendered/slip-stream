@@ -331,9 +331,40 @@ class GraphQLFactory:
         et = entity_type
         reg = registration
 
-        async def resolver(info: Info, skip: int = 0, limit: int = 100) -> List[et]:  # type: ignore
+        async def resolver(
+            info: Info,
+            skip: int = 0,
+            limit: int = 100,
+            where: Optional[strawberry.scalars.JSON] = None,
+            sort: Optional[str] = None,
+        ) -> List[et]:  # type: ignore
             db = await _resolve_db(info, get_db)
             request = info.context.get("request")
+
+            # Parse where clause through safe DSL
+            from slip_stream.core.query import QueryDSL, QueryValidationError, parse_sort_param
+            schema_dict = getattr(reg, "schema_dict", None) or {}
+            dsl = QueryDSL.from_schema(schema_dict) if schema_dict else QueryDSL()
+
+            filter_criteria = None
+            sort_by = None
+            sort_order = -1
+
+            if where:
+                try:
+                    filter_criteria = dsl.to_mongo(where)
+                except QueryValidationError as e:
+                    raise ValueError(str(e)) from e
+
+            if sort:
+                try:
+                    sort_spec = parse_sort_param(sort, dsl._allowed)
+                    mongo_sort = dsl.to_mongo_sort(sort_spec)
+                    if mongo_sort:
+                        sort_by = mongo_sort[0][0]
+                        sort_order = mongo_sort[0][1]
+                except QueryValidationError as e:
+                    raise ValueError(str(e)) from e
 
             ctx = _build_graphql_context(
                 request=request,
@@ -343,6 +374,9 @@ class GraphQLFactory:
                 info=info,
                 skip=skip,
                 limit=limit,
+                filter_criteria=filter_criteria,
+                sort_by=sort_by,
+                sort_order=sort_order,
             )
 
             from slip_stream.core.operation import OperationExecutor
@@ -355,7 +389,11 @@ class GraphQLFactory:
             return [_model_to_strawberry(e, et) for e in result]
 
         resolver.__name__ = f"list_{schema_name}s"
-        resolver.__annotations__ = {"info": Info, "skip": int, "limit": int, "return": List[et]}
+        resolver.__annotations__ = {
+            "info": Info, "skip": int, "limit": int,
+            "where": Optional[strawberry.scalars.JSON], "sort": Optional[str],
+            "return": List[et],
+        }
         return resolver
 
     def _make_create_resolver(self, schema_name, entity_type, create_input, registration, get_db, event_bus=None):
@@ -508,6 +546,9 @@ def _build_graphql_context(
     data: Any = None,
     skip: int = 0,
     limit: int = 100,
+    filter_criteria: Any = None,
+    sort_by: Any = None,
+    sort_order: int = -1,
 ) -> "RequestContext":
     """Build a RequestContext for a GraphQL resolver.
 
@@ -534,15 +575,22 @@ def _build_graphql_context(
     if operation == "list":
         kwargs["skip"] = skip
         kwargs["limit"] = limit
+        if filter_criteria is not None:
+            kwargs["filter_criteria"] = filter_criteria
+        if sort_by is not None:
+            kwargs["sort_by"] = sort_by
+        kwargs["sort_order"] = sort_order
 
     # Use from_request when we have a real Starlette Request
     if request is not None and hasattr(request, "headers"):
-        return RequestContext.from_request(
+        ctx = RequestContext.from_request(
             request=request,
             operation=operation,
             schema_name=schema_name,
             **kwargs,
         )
+        ctx.channel = "graphql"
+        return ctx
 
     # Fallback: construct directly (e.g. in tests without real HTTP)
     from types import SimpleNamespace
@@ -555,6 +603,7 @@ def _build_graphql_context(
         request=fake_request,
         operation=operation,
         schema_name=schema_name,
+        channel="graphql",
         **kwargs,
     )
 

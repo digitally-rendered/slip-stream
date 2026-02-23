@@ -60,6 +60,9 @@ class RequestContext:
     # List-specific parameters
     skip: int = 0
     limit: int = 100
+    filter_criteria: Optional[Dict[str, Any]] = None
+    sort_by: Optional[str] = None
+    sort_order: int = -1
 
     # Schema version negotiation
     schema_version: Optional[str] = None

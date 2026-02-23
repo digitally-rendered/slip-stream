@@ -416,15 +416,15 @@ class SlipStreamRegistry:
                     f"Available schemas: {available}"
                 ) from None
 
-            if entry.version:
-                key = f"{entry.operation}@{entry.version}"
-            else:
-                key = entry.operation
+            key = self._build_override_key(
+                entry.operation, entry.version, entry.channel
+            )
             registration.handler_overrides[key] = entry.handler
 
         # 2. Register pre_* hooks in order: guards → validators → before-transforms
         for entry in self._guards:
             handler = self._wrap_version_hook(entry.handler, entry.version)
+            handler = self._wrap_channel_hook(handler, entry.channel)
             event_bus.register(
                 f"pre_{entry.operation}",
                 handler,
@@ -433,6 +433,7 @@ class SlipStreamRegistry:
 
         for entry in self._validators:
             handler = self._wrap_version_hook(entry.handler, entry.version)
+            handler = self._wrap_channel_hook(handler, entry.channel)
             event_bus.register(
                 f"pre_{entry.operation}",
                 handler,
@@ -441,6 +442,7 @@ class SlipStreamRegistry:
 
         for entry in self._transforms_before:
             handler = self._wrap_version_hook(entry.handler, entry.version)
+            handler = self._wrap_channel_hook(handler, entry.channel)
             event_bus.register(
                 f"pre_{entry.operation}",
                 handler,
@@ -450,6 +452,7 @@ class SlipStreamRegistry:
         # 3. Register post_* hooks: after-transforms
         for entry in self._transforms_after:
             handler = self._wrap_version_hook(entry.handler, entry.version)
+            handler = self._wrap_channel_hook(handler, entry.channel)
             event_bus.register(
                 f"post_{entry.operation}",
                 handler,
@@ -475,6 +478,27 @@ class SlipStreamRegistry:
         )
 
     @staticmethod
+    def _build_override_key(
+        operation: str,
+        version: str | None,
+        channel: str,
+    ) -> str:
+        """Build the handler_overrides dict key.
+
+        Key format follows decreasing specificity:
+        - ``{op}@{version}@channel:{channel}`` — version + channel
+        - ``{op}@channel:{channel}`` — channel only
+        - ``{op}@{version}`` — version only
+        - ``{op}`` — universal
+        """
+        parts = [operation]
+        if version:
+            parts[0] = f"{operation}@{version}"
+        if channel and channel != "*":
+            parts[0] = f"{parts[0]}@channel:{channel}"
+        return parts[0]
+
+    @staticmethod
     def _wrap_version_hook(
         handler: EventHandler, version: str | None
     ) -> EventHandler:
@@ -491,3 +515,22 @@ class SlipStreamRegistry:
 
         versioned_handler.__wrapped__ = handler  # type: ignore[attr-defined]
         return versioned_handler
+
+    @staticmethod
+    def _wrap_channel_hook(
+        handler: EventHandler, channel: str
+    ) -> EventHandler:
+        """Wrap a hook so it only fires for a specific transport channel.
+
+        If *channel* is ``"*"``, the handler runs unconditionally.
+        """
+        if channel == "*":
+            return handler
+
+        async def channel_handler(ctx: "RequestContext") -> None:
+            ctx_channel = getattr(ctx, "channel", "rest")
+            if ctx_channel == channel:
+                await handler(ctx)
+
+        channel_handler.__wrapped__ = handler  # type: ignore[attr-defined]
+        return channel_handler

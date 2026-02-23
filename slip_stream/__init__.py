@@ -62,6 +62,34 @@ from dotted_dict import DottedDict
 from slip_stream.core.context import HandlerOverride, RequestContext
 from slip_stream.core.domain.base import BaseDocument
 from slip_stream.core.events import EventBus, HookError
+from slip_stream.core.operation import OperationExecutor
+from slip_stream.core.policy import (
+    InlinePolicy,
+    LocalRegoPolicy,
+    OpaRemotePolicy,
+    PolicyEngine,
+    PolicyEvaluationError,
+)
+from slip_stream.adapters.api.filters.rego import RegoPolicyFilter
+from slip_stream.core.query import QueryDSL, QueryValidationError, parse_sort_param
+from slip_stream.core.audit import AuditTrail
+from slip_stream.core.webhooks import WebhookDispatcher
+from slip_stream.adapters.api.filters.rate_limit import RateLimitFilter
+from slip_stream.core.schema.watcher import SchemaWatcher
+from slip_stream.adapters.streaming.base import (
+    EventStreamBridge,
+    InMemoryStream,
+    StreamAdapter,
+    StreamEvent,
+)
+try:
+    from slip_stream.adapters.persistence.db.sql_repository import (
+        SQLRepository,
+        build_table_from_schema,
+    )
+except ImportError:
+    pass
+from slip_stream.sdk_generator import generate_sdk
 from slip_stream.core.ports.repository import RepositoryPort
 from slip_stream.core.ports.schema_storage import SchemaStoragePort
 from slip_stream.core.schema.versioning import (
@@ -103,6 +131,7 @@ __all__ = [
     "HandlerOverride",
     "EventBus",
     "HookError",
+    "OperationExecutor",
     # Core domain
     "BaseDocument",
     "RepositoryPort",
@@ -144,6 +173,32 @@ __all__ = [
     "EntityRegistration",
     "init_container",
     "get_container",
+    # Policy
+    "PolicyEngine",
+    "OpaRemotePolicy",
+    "LocalRegoPolicy",
+    "InlinePolicy",
+    "PolicyEvaluationError",
+    "RegoPolicyFilter",
+    # Query DSL
+    "QueryDSL",
+    "QueryValidationError",
+    "parse_sort_param",
+    # Audit & Webhooks
+    "AuditTrail",
+    "WebhookDispatcher",
+    "RateLimitFilter",
+    "SchemaWatcher",
+    # Event streaming
+    "StreamAdapter",
+    "StreamEvent",
+    "InMemoryStream",
+    "EventStreamBridge",
+    # SQL persistence
+    "SQLRepository",
+    "build_table_from_schema",
+    # SDK generation
+    "generate_sdk",
     # Database
     "DatabaseManager",
 ]

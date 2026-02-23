@@ -17,6 +17,7 @@ from slip_stream.adapters.persistence.db.crud_factory import CRUDFactory
 from slip_stream.core.context import RequestContext
 from slip_stream.core.events import EventBus, HookError
 from slip_stream.core.operation import OperationExecutor
+from slip_stream.core.query import QueryDSL, QueryValidationError, parse_sort_param
 from slip_stream.core.schema.registry import SchemaRegistry
 
 if TYPE_CHECKING:
@@ -178,6 +179,8 @@ class EndpointFactory:
 
             return ctx.result
 
+        _direct_dsl = QueryDSL()
+
         @router.get(
             "/",
             response_model=List[document_model],  # type: ignore[valid-type]
@@ -187,11 +190,48 @@ class EndpointFactory:
         )
         async def list_all(
             request: Request,
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000),
+            skip: int = Query(0, ge=0, description="Number of records to skip"),
+            limit: int = Query(100, ge=1, le=1000, description="Max records to return (1-1000)"),
+            where: Optional[str] = Query(
+                None,
+                description=(
+                    "JSON filter object. Operators: _eq, _neq, _gt, _gte, _lt, _lte, "
+                    "_in, _nin, _like, _ilike, _contains, _startswith, _endswith, "
+                    "_exists, _is_null. Logic: _and, _or, _not. "
+                    'Example: {"name":{"_eq":"Alice"},"age":{"_gt":18}}'
+                ),
+            ),
+            sort: Optional[str] = Query(
+                None,
+                description=(
+                    "Comma-separated sort fields. Prefix with - for descending. "
+                    "Example: -created_at,name"
+                ),
+            ),
             db: AsyncIOMotorDatabase = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> Any:
+            filter_criteria = None
+            sort_by = "created_at"
+            sort_order = -1
+
+            if where:
+                try:
+                    import json as _json
+                    raw = _json.loads(where)
+                    filter_criteria = _direct_dsl.to_mongo(raw)
+                except (ValueError, QueryValidationError) as e:
+                    raise HTTPException(status_code=400, detail=str(e)) from e
+            if sort:
+                try:
+                    sort_spec = parse_sort_param(sort)
+                    mongo_sort = _direct_dsl.to_mongo_sort(sort_spec)
+                    if mongo_sort:
+                        sort_by = mongo_sort[0][0]
+                        sort_order = mongo_sort[0][1]
+                except QueryValidationError as e:
+                    raise HTTPException(status_code=400, detail=str(e)) from e
+
             ctx = RequestContext.from_request(
                 request=request,
                 operation="list",
@@ -200,6 +240,9 @@ class EndpointFactory:
                 db=db,
                 skip=skip,
                 limit=limit,
+                filter_criteria=filter_criteria,
+                sort_by=sort_by,
+                sort_order=sort_order,
             )
 
             if event_bus:
@@ -209,7 +252,13 @@ class EndpointFactory:
                     raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
             crud = CRUDFactory.create_crud_instance(db, schema_name, version)
-            ctx.result = await crud.list_latest_active(skip=ctx.skip, limit=ctx.limit)
+            ctx.result = await crud.list_latest_active(
+                skip=ctx.skip,
+                limit=ctx.limit,
+                filter_criteria=ctx.filter_criteria,
+                sort_by=ctx.sort_by or "created_at",
+                sort_order=ctx.sort_order,
+            )
 
             if event_bus:
                 await event_bus.emit("post_list", ctx)
@@ -428,6 +477,10 @@ class EndpointFactory:
             except HookError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
+        # Build QueryDSL from the registration's schema (if available)
+        _schema_dict = getattr(registration, "schema_dict", None) or {}
+        _query_dsl = QueryDSL.from_schema(_schema_dict) if _schema_dict else QueryDSL()
+
         @router.get(
             "/",
             response_model=List[document_model],  # type: ignore[valid-type]
@@ -437,11 +490,50 @@ class EndpointFactory:
         )
         async def list_all(
             request: Request,
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000),
+            skip: int = Query(0, ge=0, description="Number of records to skip"),
+            limit: int = Query(100, ge=1, le=1000, description="Max records to return (1-1000)"),
+            where: Optional[str] = Query(
+                None,
+                description=(
+                    "JSON filter object. Operators: _eq, _neq, _gt, _gte, _lt, _lte, "
+                    "_in, _nin, _like, _ilike, _contains, _startswith, _endswith, "
+                    "_exists, _is_null. Logic: _and, _or, _not. "
+                    'Example: {"name":{"_eq":"Alice"},"age":{"_gt":18}}'
+                ),
+            ),
+            sort: Optional[str] = Query(
+                None,
+                description=(
+                    "Comma-separated sort fields. Prefix with - for descending. "
+                    "Example: -created_at,name"
+                ),
+            ),
             db: AsyncIOMotorDatabase = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> Any:
+            # Parse where clause
+            filter_criteria = None
+            if where:
+                try:
+                    import json as _json
+                    raw = _json.loads(where)
+                    filter_criteria = _query_dsl.to_mongo(raw)
+                except (ValueError, QueryValidationError) as e:
+                    raise HTTPException(status_code=400, detail=str(e)) from e
+
+            # Parse sort
+            sort_by = "created_at"
+            sort_order = -1
+            if sort:
+                try:
+                    sort_spec = parse_sort_param(sort, _query_dsl._allowed)
+                    mongo_sort = _query_dsl.to_mongo_sort(sort_spec)
+                    if mongo_sort:
+                        sort_by = mongo_sort[0][0]
+                        sort_order = mongo_sort[0][1]
+                except QueryValidationError as e:
+                    raise HTTPException(status_code=400, detail=str(e)) from e
+
             ctx = RequestContext.from_request(
                 request=request,
                 operation="list",
@@ -450,6 +542,9 @@ class EndpointFactory:
                 db=db,
                 skip=skip,
                 limit=limit,
+                filter_criteria=filter_criteria,
+                sort_by=sort_by,
+                sort_order=sort_order,
             )
             try:
                 return await executor.execute_list(ctx)
