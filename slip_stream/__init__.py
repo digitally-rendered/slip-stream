@@ -26,7 +26,13 @@ from slip_stream.adapters.api.filters.content_negotiation import (
 from slip_stream.adapters.api.filters.envelope import ResponseEnvelopeFilter
 from slip_stream.adapters.api.filters.middleware import FilterChainMiddleware
 from slip_stream.adapters.api.filters.projection import FieldProjectionFilter
+from slip_stream.adapters.api.filters.schema_version import SchemaVersionFilter
 from slip_stream.adapters.api.endpoint_factory import EndpointFactory
+
+try:
+    from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+except ImportError:
+    pass
 from slip_stream.adapters.api.schema_router import (
     register_schema_endpoint,
     register_schema_endpoint_from_registration,
@@ -36,6 +42,12 @@ from slip_stream.adapters.api.schema_vending import create_schema_vending_router
 from slip_stream.adapters.persistence.db.crud_factory import CRUDFactory
 from slip_stream.adapters.persistence.schema.file_storage import FileSchemaStorage
 from slip_stream.adapters.persistence.schema.mongo_storage import MongoSchemaStorage
+from slip_stream.adapters.persistence.schema.composite_storage import CompositeSchemaStorage
+
+try:
+    from slip_stream.adapters.persistence.schema.http_storage import HttpSchemaStorage
+except ImportError:
+    pass
 from slip_stream.core.schema.ref_resolver import RefResolver
 from slip_stream.adapters.persistence.db.generic_crud import VersionedMongoCRUD
 from slip_stream.adapters.persistence.db.repository_factory import RepositoryFactory
@@ -84,6 +96,7 @@ __all__ = [
     "AuthFilter",
     "ResponseEnvelopeFilter",
     "FieldProjectionFilter",
+    "SchemaVersionFilter",
     # Context & Events
     "DottedDict",
     "RequestContext",
@@ -115,11 +128,14 @@ __all__ = [
     # Schema storage
     "FileSchemaStorage",
     "MongoSchemaStorage",
+    "HttpSchemaStorage",
+    "CompositeSchemaStorage",
     # Schema utilities
     "RefResolver",
     "create_schema_vending_router",
     # API
     "EndpointFactory",
+    "GraphQLFactory",
     "register_schema_endpoint",
     "register_schema_endpoints",
     "register_schema_endpoint_from_registration",

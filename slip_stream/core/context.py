@@ -61,6 +61,9 @@ class RequestContext:
     skip: int = 0
     limit: int = 100
 
+    # Schema version negotiation
+    schema_version: Optional[str] = None
+
     # Extension point
     extras: Dict[str, Any] = field(default_factory=DottedDict)
 
@@ -86,6 +89,18 @@ class RequestContext:
             user = getattr(filter_ctx, "user", None)
             if user is not None:
                 kwargs["current_user"] = user
+
+        # Auto-pull schema version from header or filter context
+        if "schema_version" not in kwargs:
+            header_version = request.headers.get("x-schema-version")
+            if header_version:
+                kwargs["schema_version"] = header_version
+            elif filter_ctx is not None:
+                extras = getattr(filter_ctx, "extras", None)
+                if extras is not None:
+                    sv = extras.get("schema_version")
+                    if sv:
+                        kwargs["schema_version"] = sv
 
         # Wrap plain dicts for attribute-style access
         if "current_user" in kwargs and isinstance(kwargs["current_user"], dict) and not isinstance(kwargs["current_user"], DottedDict):

@@ -62,6 +62,10 @@ class ResponseEnvelopeFilter(FilterBase):
             "request_id": context.extras.get("request_id"),
         }
 
+        schema_version = context.extras.get("schema_version")
+        if schema_version:
+            meta["schema_version"] = schema_version
+
         if isinstance(data, list) and self.include_pagination:
             skip = int(request.query_params.get("skip", "0"))
             limit = int(request.query_params.get("limit", "100"))

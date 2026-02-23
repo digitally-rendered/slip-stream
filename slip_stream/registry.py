@@ -67,6 +67,7 @@ class _HandlerEntry:
     schema_name: str
     operation: str
     handler: Any
+    version: str | None = None
 
 
 @dataclass
@@ -77,6 +78,7 @@ class _HookEntry:
     operation: str | None
     event_name: str | None
     handler: EventHandler
+    version: str | None = None
 
 
 class SlipStreamRegistry:
@@ -108,7 +110,7 @@ class SlipStreamRegistry:
         self._on_hooks: list[_HookEntry] = []
 
     def handler(
-        self, schema: str, operation: str
+        self, schema: str, operation: str, *, version: str | None = None
     ) -> Callable[[Any], Any]:
         """Register a handler override for a schema + operation.
 
@@ -120,6 +122,8 @@ class SlipStreamRegistry:
             schema: Schema name (e.g., ``"widget"``).
             operation: CRUD operation (``"create"``, ``"get"``, ``"list"``,
                 ``"update"``, ``"delete"``).
+            version: Optional schema version to scope to. When ``None``
+                the handler applies to all versions.
 
         Example::
 
@@ -127,6 +131,11 @@ class SlipStreamRegistry:
             async def custom_create(ctx: RequestContext) -> Any:
                 ctx.data.name = ctx.data.name.upper()
                 return await default_service.execute(data=ctx.data, ...)
+
+            @registry.handler("widget", "create", version="2.0.0")
+            async def v2_create(ctx: RequestContext) -> Any:
+                # Only handles version 2.0.0 create requests
+                ...
         """
         if operation not in _VALID_OPERATIONS:
             raise ValueError(
@@ -136,14 +145,19 @@ class SlipStreamRegistry:
 
         def decorator(fn: Any) -> Any:
             self._handlers.append(
-                _HandlerEntry(schema_name=schema, operation=operation, handler=fn)
+                _HandlerEntry(
+                    schema_name=schema,
+                    operation=operation,
+                    handler=fn,
+                    version=version,
+                )
             )
             return fn
 
         return decorator
 
     def guard(
-        self, schema: str, *operations: str
+        self, schema: str, *operations: str, version: str | None = None
     ) -> Callable[[EventHandler], EventHandler]:
         """Register an authorization guard for one or more operations.
 
@@ -153,6 +167,7 @@ class SlipStreamRegistry:
         Args:
             schema: Schema name, or ``"*"`` for all schemas.
             *operations: One or more CRUD operation names.
+            version: Optional schema version to scope to.
 
         Example::
 
@@ -176,6 +191,7 @@ class SlipStreamRegistry:
                         operation=op,
                         event_name=None,
                         handler=fn,
+                        version=version,
                     )
                 )
             return fn
@@ -183,7 +199,7 @@ class SlipStreamRegistry:
         return decorator
 
     def validate(
-        self, schema: str, *operations: str
+        self, schema: str, *operations: str, version: str | None = None
     ) -> Callable[[EventHandler], EventHandler]:
         """Register a cross-field validation hook for one or more operations.
 
@@ -193,6 +209,7 @@ class SlipStreamRegistry:
         Args:
             schema: Schema name, or ``"*"`` for all schemas.
             *operations: One or more CRUD operation names.
+            version: Optional schema version to scope to.
 
         Example::
 
@@ -216,6 +233,7 @@ class SlipStreamRegistry:
                         operation=op,
                         event_name=None,
                         handler=fn,
+                        version=version,
                     )
                 )
             return fn
@@ -223,7 +241,11 @@ class SlipStreamRegistry:
         return decorator
 
     def transform(
-        self, schema: str, *operations: str, when: str = "before"
+        self,
+        schema: str,
+        *operations: str,
+        when: str = "before",
+        version: str | None = None,
     ) -> Callable[[EventHandler], EventHandler]:
         """Register a field transformation hook.
 
@@ -234,6 +256,7 @@ class SlipStreamRegistry:
             schema: Schema name, or ``"*"`` for all schemas.
             *operations: One or more CRUD operation names.
             when: ``"before"`` (pre-hook) or ``"after"`` (post-hook).
+            version: Optional schema version to scope to.
 
         Example::
 
@@ -263,6 +286,7 @@ class SlipStreamRegistry:
                         operation=op,
                         event_name=None,
                         handler=fn,
+                        version=version,
                     )
                 )
             return fn
@@ -321,6 +345,14 @@ class SlipStreamRegistry:
         before endpoint registration. Should not be called manually unless
         you are building a custom startup sequence.
 
+        Version-scoped handlers (``version != None``) are stored with a
+        ``{operation}@{version}`` key in ``handler_overrides``.  The endpoint
+        factory checks for a version-specific override first, falling back to
+        the unversioned handler.
+
+        Version-scoped hooks are wrapped so they only fire when the
+        ``RequestContext.schema_version`` matches.
+
         Raises:
             ValueError: If a ``@handler`` references an unknown schema name.
         """
@@ -335,35 +367,44 @@ class SlipStreamRegistry:
                     f"@handler registered for unknown schema '{entry.schema_name}'. "
                     f"Available schemas: {available}"
                 ) from None
-            registration.handler_overrides[entry.operation] = entry.handler
+
+            if entry.version:
+                key = f"{entry.operation}@{entry.version}"
+            else:
+                key = entry.operation
+            registration.handler_overrides[key] = entry.handler
 
         # 2. Register pre_* hooks in order: guards → validators → before-transforms
         for entry in self._guards:
+            handler = self._wrap_version_hook(entry.handler, entry.version)
             event_bus.register(
                 f"pre_{entry.operation}",
-                entry.handler,
+                handler,
                 schema_name=entry.schema_name,
             )
 
         for entry in self._validators:
+            handler = self._wrap_version_hook(entry.handler, entry.version)
             event_bus.register(
                 f"pre_{entry.operation}",
-                entry.handler,
+                handler,
                 schema_name=entry.schema_name,
             )
 
         for entry in self._transforms_before:
+            handler = self._wrap_version_hook(entry.handler, entry.version)
             event_bus.register(
                 f"pre_{entry.operation}",
-                entry.handler,
+                handler,
                 schema_name=entry.schema_name,
             )
 
         # 3. Register post_* hooks: after-transforms
         for entry in self._transforms_after:
+            handler = self._wrap_version_hook(entry.handler, entry.version)
             event_bus.register(
                 f"post_{entry.operation}",
-                entry.handler,
+                handler,
                 schema_name=entry.schema_name,
             )
 
@@ -384,3 +425,21 @@ class SlipStreamRegistry:
             len(self._transforms_before) + len(self._transforms_after),
             len(self._on_hooks),
         )
+
+    @staticmethod
+    def _wrap_version_hook(
+        handler: EventHandler, version: str | None
+    ) -> EventHandler:
+        """Wrap a hook so it only fires for a specific schema version.
+
+        If *version* is ``None``, the handler runs unconditionally.
+        """
+        if version is None:
+            return handler
+
+        async def versioned_handler(ctx: "RequestContext") -> None:
+            if ctx.schema_version == version:
+                await handler(ctx)
+
+        versioned_handler.__wrapped__ = handler  # type: ignore[attr-defined]
+        return versioned_handler

@@ -59,6 +59,21 @@ class SchemaVersionsResponse(BaseModel):
     latest_version: str
 
 
+class SchemaDagNode(BaseModel):
+    """Single node in the schema dependency DAG."""
+
+    name: str
+    versions: list[str]
+    latest_version: str
+    dependencies: list[str]
+
+
+class SchemaDagResponse(BaseModel):
+    """Complete dependency graph of all registered schemas."""
+
+    schemas: list[SchemaDagNode]
+
+
 # ------------------------------------------------------------------
 # Router factory
 # ------------------------------------------------------------------
@@ -98,6 +113,30 @@ def create_schema_vending_router(
             )
         return SchemaListResponse(schemas=entries)
 
+    @router.get("/dag", response_model=SchemaDagResponse)
+    async def get_schema_dag() -> SchemaDagResponse:
+        """Get the dependency graph (DAG) of all registered schemas.
+
+        Returns each schema with its versions and a list of schema names
+        it depends on (via ``$ref`` pointers).
+        """
+        reg = _registry()
+        nodes = []
+        for name in sorted(reg.get_schema_names()):
+            versions = reg.get_all_versions(name)
+            latest = reg.get_latest_version(name)
+            schema = reg.get_schema(name, latest)
+            deps = _extract_refs(schema)
+            nodes.append(
+                SchemaDagNode(
+                    name=name,
+                    versions=versions,
+                    latest_version=latest,
+                    dependencies=deps,
+                )
+            )
+        return SchemaDagResponse(schemas=nodes)
+
     @router.get("/{name}", response_model=SchemaVersionsResponse)
     async def get_schema_versions(name: str) -> SchemaVersionsResponse:
         """List all versions of a specific schema."""
@@ -136,3 +175,24 @@ def create_schema_vending_router(
         return {"name": name, "version": version, "schema": schema}
 
     return router
+
+
+def _extract_refs(schema: Any, seen: set | None = None) -> list[str]:
+    """Walk a schema and extract referenced schema names from $ref pointers."""
+    if seen is None:
+        seen = set()
+    refs: list[str] = []
+    if isinstance(schema, dict):
+        ref = schema.get("$ref")
+        if ref and isinstance(ref, str) and not ref.startswith("#"):
+            parts = ref.replace("\\", "/").split("/")
+            name = parts[-1].replace(".json", "").split("#")[0]
+            if name and name not in seen:
+                seen.add(name)
+                refs.append(name)
+        for v in schema.values():
+            refs.extend(_extract_refs(v, seen))
+    elif isinstance(schema, list):
+        for item in schema:
+            refs.extend(_extract_refs(item, seen))
+    return refs

@@ -92,6 +92,7 @@ class EntityRegistration:
     services: dict[str, type] = field(default_factory=dict)
     controller_factory: Any | None = None
     handler_overrides: dict[str, Any] = field(default_factory=dict)
+    version_models: dict[str, tuple] = field(default_factory=dict)
 
 
 class EntityContainer:
@@ -137,6 +138,40 @@ class EntityContainer:
     def get_all(self) -> dict[str, EntityRegistration]:
         """Return a shallow copy of all registrations."""
         return dict(self._registrations)
+
+    def resolve_version(
+        self, schema_name: str, version: str | None = None
+    ) -> tuple[type[BaseDocument], type[BaseModel], type[BaseModel]]:
+        """Return the model triple for a schema at a specific version.
+
+        Uses the registration's ``version_models`` cache first, then
+        falls back to ``SchemaRegistry.get_model_for_version()``.
+
+        Args:
+            schema_name: The entity schema name.
+            version: Semver version string, ``"latest"``, or ``None``
+                (treated as ``"latest"``).
+
+        Returns:
+            Tuple of ``(DocumentModel, CreateModel, UpdateModel)``.
+
+        Raises:
+            KeyError: If *schema_name* has not been resolved.
+            ValueError: If the requested version does not exist.
+        """
+        reg = self._registrations[schema_name]
+        resolved_version = version or "latest"
+
+        if resolved_version == "latest":
+            return (reg.document_model, reg.create_model, reg.update_model)
+
+        if resolved_version in reg.version_models:
+            return reg.version_models[resolved_version]
+
+        registry = SchemaRegistry()
+        triple = registry.get_model_for_version(schema_name, resolved_version)
+        reg.version_models[resolved_version] = triple
+        return triple
 
     def _resolve_entity(self, schema_name: str) -> EntityRegistration:
         """Resolve models, repository, services, and controller for one entity."""

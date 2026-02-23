@@ -22,6 +22,20 @@ if TYPE_CHECKING:
     from slip_stream.container import EntityRegistration
 
 
+def _resolve_handler_override(
+    handler_overrides: Dict[str, Any],
+    operation: str,
+    schema_version: Optional[str] = None,
+) -> Optional[Any]:
+    """Resolve a handler override, checking version-specific key first."""
+    if schema_version:
+        versioned_key = f"{operation}@{schema_version}"
+        override = handler_overrides.get(versioned_key)
+        if override is not None:
+            return override
+    return handler_overrides.get(operation)
+
+
 def _parse_entity_id(entity_id: Union[str, uuid.UUID], schema_name: str) -> uuid.UUID:
     """Parse entity_id to UUID, raising 400 on invalid format."""
     if isinstance(entity_id, uuid.UUID):
@@ -391,7 +405,9 @@ class EndpointFactory:
                 except HookError as e:
                     raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
-            override = handler_overrides.get("create")
+            override = _resolve_handler_override(
+                handler_overrides, "create", ctx.schema_version
+            )
             if override:
                 ctx.result = await override(ctx)
             else:
@@ -444,7 +460,9 @@ class EndpointFactory:
                 except HookError as e:
                     raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
-            override = handler_overrides.get("get")
+            override = _resolve_handler_override(
+                handler_overrides, "get", ctx.schema_version
+            )
             if override:
                 ctx.result = await override(ctx)
             else:
@@ -485,7 +503,9 @@ class EndpointFactory:
                 except HookError as e:
                     raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
-            override = handler_overrides.get("list")
+            override = _resolve_handler_override(
+                handler_overrides, "list", ctx.schema_version
+            )
             if override:
                 ctx.result = await override(ctx)
             else:
@@ -540,7 +560,9 @@ class EndpointFactory:
                 except HookError as e:
                     raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
-            override = handler_overrides.get("update")
+            override = _resolve_handler_override(
+                handler_overrides, "update", ctx.schema_version
+            )
             if override:
                 ctx.result = await override(ctx)
             else:
@@ -594,7 +616,9 @@ class EndpointFactory:
                 except HookError as e:
                     raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
-            override = handler_overrides.get("delete")
+            override = _resolve_handler_override(
+                handler_overrides, "delete", ctx.schema_version
+            )
             if override:
                 ctx.result = await override(ctx)
             else:

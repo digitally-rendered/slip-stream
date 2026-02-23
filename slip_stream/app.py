@@ -94,6 +94,8 @@ class SlipStream:
         schema_storage: Optional[Any] = None,
         schema_vending: bool = False,
         schema_vending_prefix: str = "/schemas",
+        graphql: bool = False,
+        graphql_prefix: str = "/graphql",
     ) -> None:
         self.app = app
         self.schema_dir = schema_dir
@@ -111,6 +113,8 @@ class SlipStream:
         self._schema_storage = schema_storage
         self._schema_vending = schema_vending
         self._schema_vending_prefix = schema_vending_prefix
+        self._graphql = graphql
+        self._graphql_prefix = graphql_prefix
 
         # Auto-create EventBus when registry is provided but no bus given
         if registry is not None and self._event_bus is None:
@@ -196,6 +200,21 @@ class SlipStream:
             logger.info(
                 "Schema vending API mounted at %s", self._schema_vending_prefix
             )
+
+        # Mount GraphQL API if enabled
+        if self._graphql:
+            from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+            gql_factory = GraphQLFactory()
+            gql_router = gql_factory.create_graphql_router(
+                container=self._container,
+                get_db=self._get_db,
+                schema_registry=registry,
+                get_current_user=self.get_current_user,
+                event_bus=self._event_bus,
+            )
+            self.app.include_router(gql_router, prefix=self._graphql_prefix)
+            logger.info("GraphQL API mounted at %s", self._graphql_prefix)
 
         # Install structured error handlers if enabled
         if self._structured_errors:

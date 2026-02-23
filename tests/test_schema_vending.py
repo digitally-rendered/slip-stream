@@ -104,6 +104,20 @@ class TestSchemaVendingAPI:
         assert "properties" in schema
         assert "label" in schema["properties"]
 
+    def test_schema_dag(self, client):
+        resp = client.get("/schemas/dag")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "schemas" in data
+        names = [s["name"] for s in data["schemas"]]
+        assert "widget" in names
+        assert "gadget" in names
+        # Each node has required fields
+        for node in data["schemas"]:
+            assert "versions" in node
+            assert "latest_version" in node
+            assert "dependencies" in node
+
 
 class TestSlipStreamVendingIntegration:
     """Test that schema_vending=True wires vending endpoints via SlipStream."""
