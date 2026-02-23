@@ -23,7 +23,7 @@ from starlette.testclient import TestClient as StarletteTestClient
 from slip_stream.adapters.api.filters.base import FilterContext
 from slip_stream.adapters.api.filters.envelope import ResponseEnvelopeFilter
 from slip_stream.adapters.api.filters.schema_version import SchemaVersionFilter
-from slip_stream.adapters.api.endpoint_factory import _resolve_handler_override
+from slip_stream.core.operation import _resolve_handler_override
 from slip_stream.container import EntityContainer, EntityRegistration
 from slip_stream.core.context import RequestContext
 from slip_stream.core.events import EventBus

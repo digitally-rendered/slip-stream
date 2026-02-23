@@ -22,6 +22,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Type
 
+from slip_stream.core.events import HookError
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -230,23 +232,30 @@ class GraphQLFactory:
         event_bus: Any,
         mode: str,
     ) -> type:
-        """Build a Strawberry-decorated Query or Mutation class."""
+        """Build a Strawberry-decorated Query or Mutation class.
+
+        Strawberry requires types used in resolver annotations to be resolvable
+        from the module's global scope. We register dynamically-created types
+        in the graphql_factory module globals so Strawberry can find them.
+        """
+        # Register all entity types in this module's globals so Strawberry can resolve them
+        import sys
+        this_module = sys.modules[__name__]
+        for schema_name, et in entity_types.items():
+            setattr(this_module, et.__name__, et)
+
         methods: dict[str, Any] = {}
-        annotations: dict[str, Any] = {}
 
         if mode == "query":
             for schema_name, reg in registrations.items():
                 et = entity_types[schema_name]
 
-                # get_<entity>
-                get_fn = self._make_get_resolver(schema_name, et, reg, get_db)
+                get_fn = self._make_get_resolver(schema_name, et, reg, get_db, event_bus)
                 methods[f"get_{schema_name}"] = strawberry.field(resolver=get_fn)
 
-                # list_<entities>
-                list_fn = self._make_list_resolver(schema_name, et, reg, get_db)
+                list_fn = self._make_list_resolver(schema_name, et, reg, get_db, event_bus)
                 methods[f"list_{schema_name}s"] = strawberry.field(resolver=list_fn)
 
-            # Schema DAG query
             dag_fn = self._make_schema_dag_resolver(schema_registry)
             methods["schema_dag"] = strawberry.field(resolver=dag_fn)
 
@@ -261,102 +270,192 @@ class GraphQLFactory:
                     pascal, properties, required_fields
                 )
 
+                # Register input types in module globals
+                setattr(this_module, create_input.__name__, create_input)
+                setattr(this_module, update_input.__name__, update_input)
+
                 create_fn = self._make_create_resolver(
-                    schema_name, et, create_input, reg, get_db
+                    schema_name, et, create_input, reg, get_db, event_bus
                 )
                 methods[f"create_{schema_name}"] = strawberry.mutation(resolver=create_fn)
 
                 update_fn = self._make_update_resolver(
-                    schema_name, et, update_input, reg, get_db
+                    schema_name, et, update_input, reg, get_db, event_bus
                 )
                 methods[f"update_{schema_name}"] = strawberry.mutation(resolver=update_fn)
 
-                delete_fn = self._make_delete_resolver(schema_name, reg, get_db)
+                delete_fn = self._make_delete_resolver(schema_name, reg, get_db, event_bus)
                 methods[f"delete_{schema_name}"] = strawberry.mutation(resolver=delete_fn)
 
-        # Build namespace for type()
         ns = {**methods}
         cls = type(class_name, (), ns)
         return strawberry.type(cls)
 
-    def _make_get_resolver(self, schema_name, entity_type, registration, get_db):
+    def _make_get_resolver(self, schema_name, entity_type, registration, get_db, event_bus=None):
         et = entity_type
         reg = registration
 
         async def resolver(info: Info, entity_id: str) -> Optional[et]:  # type: ignore
             db = await _resolve_db(info, get_db)
+            request = info.context.get("request")
+
             repo = reg.repository_class(db)
             entity = await repo.get_by_entity_id(entity_id=uuid.UUID(entity_id))
             if entity is None:
                 return None
-            return _model_to_strawberry(entity, et)
+
+            ctx = _build_graphql_context(
+                request=request,
+                operation="get",
+                schema_name=schema_name,
+                entity_id=uuid.UUID(entity_id),
+                entity=entity,
+                db=db,
+                info=info,
+            )
+
+            from slip_stream.core.operation import OperationExecutor
+            executor = OperationExecutor(reg, event_bus)
+            try:
+                result = await executor.execute_get(ctx)
+            except HookError as e:
+                raise ValueError(e.detail) from e
+
+            return _model_to_strawberry(result, et)
 
         resolver.__name__ = f"get_{schema_name}"
+        resolver.__annotations__ = {"info": Info, "entity_id": str, "return": Optional[et]}
         return resolver
 
-    def _make_list_resolver(self, schema_name, entity_type, registration, get_db):
+    def _make_list_resolver(self, schema_name, entity_type, registration, get_db, event_bus=None):
         et = entity_type
         reg = registration
 
         async def resolver(info: Info, skip: int = 0, limit: int = 100) -> List[et]:  # type: ignore
             db = await _resolve_db(info, get_db)
-            repo = reg.repository_class(db)
-            svc = reg.services["list"](repo)
-            entities = await svc.execute(skip=skip, limit=limit)
-            return [_model_to_strawberry(e, et) for e in entities]
+            request = info.context.get("request")
+
+            ctx = _build_graphql_context(
+                request=request,
+                operation="list",
+                schema_name=schema_name,
+                db=db,
+                info=info,
+                skip=skip,
+                limit=limit,
+            )
+
+            from slip_stream.core.operation import OperationExecutor
+            executor = OperationExecutor(reg, event_bus)
+            try:
+                result = await executor.execute_list(ctx)
+            except HookError as e:
+                raise ValueError(e.detail) from e
+
+            return [_model_to_strawberry(e, et) for e in result]
 
         resolver.__name__ = f"list_{schema_name}s"
+        resolver.__annotations__ = {"info": Info, "skip": int, "limit": int, "return": List[et]}
         return resolver
 
-    def _make_create_resolver(self, schema_name, entity_type, create_input, registration, get_db):
+    def _make_create_resolver(self, schema_name, entity_type, create_input, registration, get_db, event_bus=None):
         et = entity_type
         ci = create_input
         reg = registration
 
         async def resolver(info: Info, input: ci) -> et:  # type: ignore
             db = await _resolve_db(info, get_db)
-            user_id = _get_user_id(info)
+            request = info.context.get("request")
+
             data = reg.create_model(**strawberry.asdict(input))
-            repo = reg.repository_class(db)
-            svc = reg.services["create"](repo)
-            result = await svc.execute(data=data, user_id=user_id)
+            ctx = _build_graphql_context(
+                request=request,
+                operation="create",
+                schema_name=schema_name,
+                data=data,
+                db=db,
+                info=info,
+            )
+
+            from slip_stream.core.operation import OperationExecutor
+            executor = OperationExecutor(reg, event_bus)
+            try:
+                result = await executor.execute_create(ctx)
+            except HookError as e:
+                raise ValueError(e.detail) from e
+
             return _model_to_strawberry(result, et)
 
         resolver.__name__ = f"create_{schema_name}"
+        resolver.__annotations__ = {"info": Info, "input": ci, "return": et}
         return resolver
 
-    def _make_update_resolver(self, schema_name, entity_type, update_input, registration, get_db):
+    def _make_update_resolver(self, schema_name, entity_type, update_input, registration, get_db, event_bus=None):
         et = entity_type
         ui = update_input
         reg = registration
 
         async def resolver(info: Info, entity_id: str, input: ui) -> Optional[et]:  # type: ignore
             db = await _resolve_db(info, get_db)
-            user_id = _get_user_id(info)
+            request = info.context.get("request")
+
             input_dict = {k: v for k, v in strawberry.asdict(input).items() if v is not None}
             data = reg.update_model(**input_dict)
-            repo = reg.repository_class(db)
-            svc = reg.services["update"](repo)
-            result = await svc.execute(
-                entity_id=uuid.UUID(entity_id), data=data, user_id=user_id
+            ctx = _build_graphql_context(
+                request=request,
+                operation="update",
+                schema_name=schema_name,
+                entity_id=uuid.UUID(entity_id),
+                data=data,
+                db=db,
+                info=info,
             )
+
+            from slip_stream.core.operation import OperationExecutor
+            executor = OperationExecutor(reg, event_bus)
+            try:
+                result = await executor.execute_update(ctx)
+            except HookError as e:
+                raise ValueError(e.detail) from e
+
             return _model_to_strawberry(result, et)
 
         resolver.__name__ = f"update_{schema_name}"
+        resolver.__annotations__ = {"info": Info, "entity_id": str, "input": ui, "return": Optional[et]}
         return resolver
 
-    def _make_delete_resolver(self, schema_name, registration, get_db):
+    def _make_delete_resolver(self, schema_name, registration, get_db, event_bus=None):
         reg = registration
 
         async def resolver(info: Info, entity_id: str) -> bool:
             db = await _resolve_db(info, get_db)
-            user_id = _get_user_id(info)
+            request = info.context.get("request")
+
+            # Hydrate entity for pre-hooks
             repo = reg.repository_class(db)
-            svc = reg.services["delete"](repo)
-            await svc.execute(entity_id=uuid.UUID(entity_id), user_id=user_id)
+            entity = await repo.get_by_entity_id(entity_id=uuid.UUID(entity_id))
+
+            ctx = _build_graphql_context(
+                request=request,
+                operation="delete",
+                schema_name=schema_name,
+                entity_id=uuid.UUID(entity_id),
+                entity=entity,
+                db=db,
+                info=info,
+            )
+
+            from slip_stream.core.operation import OperationExecutor
+            executor = OperationExecutor(reg, event_bus)
+            try:
+                await executor.execute_delete(ctx)
+            except HookError as e:
+                raise ValueError(e.detail) from e
+
             return True
 
         resolver.__name__ = f"delete_{schema_name}"
+        resolver.__annotations__ = {"info": Info, "entity_id": str, "return": bool}
         return resolver
 
     def _make_schema_dag_resolver(self, schema_registry):
@@ -380,7 +479,7 @@ class GraphQLFactory:
         return schema_dag
 
 
-async def _resolve_db(info: Info, get_db: Any) -> Any:
+async def _resolve_db(info: "Info", get_db: Any) -> Any:
     """Resolve the database from the request context."""
     if hasattr(get_db, "__call__"):
         from inspect import iscoroutinefunction
@@ -390,12 +489,74 @@ async def _resolve_db(info: Info, get_db: Any) -> Any:
     return None
 
 
-def _get_user_id(info: Info) -> str:
+def _get_user_id(info: "Info") -> str:
     """Extract user ID from the GraphQL context."""
-    request = info.context.get("request")
+    request = info.context.get("request") if info.context else None
     if request:
         return request.headers.get("x-user-id", "anonymous")
     return "anonymous"
+
+
+def _build_graphql_context(
+    request: Any,
+    operation: str,
+    schema_name: str,
+    info: "Info",
+    db: Any = None,
+    entity_id: Any = None,
+    entity: Any = None,
+    data: Any = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> "RequestContext":
+    """Build a RequestContext for a GraphQL resolver.
+
+    When a real Starlette ``Request`` is available (Strawberry provides it
+    via ``info.context["request"]``), uses ``RequestContext.from_request()``
+    to get full filter-context and header negotiation.  Falls back to direct
+    construction when running in tests without a real request.
+    """
+    from slip_stream.core.context import RequestContext
+
+    user_id = _get_user_id(info)
+    current_user = {"id": user_id}
+
+    kwargs: dict[str, Any] = {
+        "current_user": current_user,
+        "db": db,
+    }
+    if entity_id is not None:
+        kwargs["entity_id"] = entity_id
+    if entity is not None:
+        kwargs["entity"] = entity
+    if data is not None:
+        kwargs["data"] = data
+    if operation == "list":
+        kwargs["skip"] = skip
+        kwargs["limit"] = limit
+
+    # Use from_request when we have a real Starlette Request
+    if request is not None and hasattr(request, "headers"):
+        return RequestContext.from_request(
+            request=request,
+            operation=operation,
+            schema_name=schema_name,
+            **kwargs,
+        )
+
+    # Fallback: construct directly (e.g. in tests without real HTTP)
+    from types import SimpleNamespace
+
+    fake_request = SimpleNamespace(
+        headers={}, state=SimpleNamespace(), query_params={},
+        url=SimpleNamespace(path="/graphql"),
+    )
+    return RequestContext(
+        request=fake_request,
+        operation=operation,
+        schema_name=schema_name,
+        **kwargs,
+    )
 
 
 def _model_to_strawberry(model: Any, strawberry_type: type) -> Any:

@@ -1,8 +1,13 @@
 """Tests for the GraphQL endpoint factory."""
 
+import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from pydantic import BaseModel
 
+from slip_stream.core.events import EventBus, HookError
 from slip_stream.core.schema.registry import SchemaRegistry
 from slip_stream.container import EntityContainer
 
@@ -167,3 +172,214 @@ class TestExtractRefs:
         }
         refs = _extract_refs(schema)
         assert refs == ["shared"]
+
+
+class TestGraphQLLifecycle:
+    """Tests verifying GraphQL resolvers use the full domain lifecycle."""
+
+    def _make_fake_info(self, headers=None):
+        """Create a fake Strawberry Info with a mock request."""
+        request = SimpleNamespace(
+            headers=headers or {},
+            state=SimpleNamespace(),
+            query_params={},
+            url=SimpleNamespace(path="/graphql"),
+        )
+        return SimpleNamespace(context={"request": request})
+
+    def _make_mock_registration(self):
+        """Create a mock EntityRegistration with async services."""
+        entity = SimpleNamespace(
+            model_dump=lambda: {"id": str(uuid.uuid4()), "name": "test"},
+        )
+        mock_service = AsyncMock()
+        mock_service.execute = AsyncMock(return_value=entity)
+
+        mock_repo = AsyncMock()
+        mock_repo.get_by_entity_id = AsyncMock(return_value=entity)
+
+        reg = SimpleNamespace(
+            schema_name="widget",
+            repository_class=MagicMock(return_value=mock_repo),
+            services={
+                "create": MagicMock(return_value=mock_service),
+                "get": MagicMock(return_value=mock_service),
+                "list": MagicMock(return_value=mock_service),
+                "update": MagicMock(return_value=mock_service),
+                "delete": MagicMock(return_value=mock_service),
+            },
+            handler_overrides={},
+            create_model=lambda **kw: SimpleNamespace(**kw),
+            update_model=lambda **kw: SimpleNamespace(**kw),
+        )
+        return reg, entity, mock_service
+
+    @pytest.mark.asyncio
+    async def test_create_resolver_fires_pre_and_post_hooks(self, registry_with_schema):
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity, svc = self._make_mock_registration()
+        bus = EventBus()
+        hooks_fired = []
+
+        async def pre_hook(ctx):
+            hooks_fired.append(f"pre_{ctx.operation}")
+
+        async def post_hook(ctx):
+            hooks_fired.append(f"post_{ctx.operation}")
+
+        bus.register("pre_create", pre_hook, schema_name="widget")
+        bus.register("post_create", post_hook, schema_name="widget")
+
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        pascal = "Widget"
+        et = factory._create_entity_type(pascal, properties, "widget")
+        ci, _ = factory._create_input_types(pascal, properties, required)
+
+        resolver = factory._make_create_resolver(
+            "widget", et, ci, reg, lambda: None, event_bus=bus
+        )
+
+        info = self._make_fake_info()
+        # Strawberry input as a simple object with matching fields
+        mock_input = SimpleNamespace(name="test")
+        import strawberry
+        # We need to patch strawberry.asdict since mock_input isn't a real strawberry type
+        with MagicMock() as mock_asdict:
+            original_asdict = strawberry.asdict
+            strawberry.asdict = lambda x: {"name": "test"}
+            try:
+                await resolver(info, mock_input)
+            finally:
+                strawberry.asdict = original_asdict
+
+        assert "pre_create" in hooks_fired
+        assert "post_create" in hooks_fired
+
+    @pytest.mark.asyncio
+    async def test_handler_override_works_in_graphql(self, registry_with_schema):
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity, svc = self._make_mock_registration()
+        override_called = []
+
+        async def custom_create(ctx):
+            override_called.append(True)
+            return entity
+
+        reg.handler_overrides["create"] = custom_create
+
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        pascal = "Widget"
+        et = factory._create_entity_type(pascal, properties, "widget")
+        ci, _ = factory._create_input_types(pascal, properties, required)
+
+        resolver = factory._make_create_resolver(
+            "widget", et, ci, reg, lambda: None
+        )
+
+        info = self._make_fake_info()
+        import strawberry
+        original_asdict = strawberry.asdict
+        strawberry.asdict = lambda x: {"name": "test"}
+        try:
+            await resolver(info, SimpleNamespace(name="test"))
+        finally:
+            strawberry.asdict = original_asdict
+
+        assert override_called == [True]
+        # Default service should NOT have been called
+        svc.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_hook_error_raises_value_error_in_graphql(self, registry_with_schema):
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity, svc = self._make_mock_registration()
+        bus = EventBus()
+
+        async def blocking_guard(ctx):
+            raise HookError(403, "Forbidden by guard")
+
+        bus.register("pre_create", blocking_guard, schema_name="widget")
+
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        pascal = "Widget"
+        et = factory._create_entity_type(pascal, properties, "widget")
+        ci, _ = factory._create_input_types(pascal, properties, required)
+
+        resolver = factory._make_create_resolver(
+            "widget", et, ci, reg, lambda: None, event_bus=bus
+        )
+
+        info = self._make_fake_info()
+        import strawberry
+        original_asdict = strawberry.asdict
+        strawberry.asdict = lambda x: {"name": "test"}
+        try:
+            with pytest.raises(ValueError, match="Forbidden by guard"):
+                await resolver(info, SimpleNamespace(name="test"))
+        finally:
+            strawberry.asdict = original_asdict
+
+    @pytest.mark.asyncio
+    async def test_get_resolver_fires_hooks(self, registry_with_schema):
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity, svc = self._make_mock_registration()
+        bus = EventBus()
+        hooks_fired = []
+
+        async def track(ctx):
+            hooks_fired.append(ctx.operation)
+
+        bus.register("pre_get", track, schema_name="widget")
+        bus.register("post_get", track, schema_name="widget")
+
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        et = factory._create_entity_type("Widget", properties, "widget")
+
+        resolver = factory._make_get_resolver(
+            "widget", et, reg, lambda: None, event_bus=bus
+        )
+
+        info = self._make_fake_info()
+        await resolver(info, str(uuid.uuid4()))
+
+        assert hooks_fired == ["get", "get"]
+
+    @pytest.mark.asyncio
+    async def test_delete_resolver_fires_hooks(self, registry_with_schema):
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity, svc = self._make_mock_registration()
+        bus = EventBus()
+        hooks_fired = []
+
+        async def track(ctx):
+            hooks_fired.append(ctx.operation)
+
+        bus.register("pre_delete", track, schema_name="widget")
+        bus.register("post_delete", track, schema_name="widget")
+
+        factory_instance = GraphQLFactory()
+        resolver = factory_instance._make_delete_resolver(
+            "widget", reg, lambda: None, event_bus=bus
+        )
+
+        info = self._make_fake_info()
+        result = await resolver(info, str(uuid.uuid4()))
+
+        assert result is True
+        assert hooks_fired == ["delete", "delete"]

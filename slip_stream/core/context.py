@@ -64,6 +64,9 @@ class RequestContext:
     # Schema version negotiation
     schema_version: Optional[str] = None
 
+    # Transport channel (set by the transport layer: "rest", "graphql", etc.)
+    channel: str = "rest"
+
     # Extension point
     extras: Dict[str, Any] = field(default_factory=DottedDict)
 

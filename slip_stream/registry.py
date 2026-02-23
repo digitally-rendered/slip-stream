@@ -59,6 +59,9 @@ _VALID_OPERATIONS = frozenset({"create", "get", "list", "update", "delete"})
 _VALID_WHENS = frozenset({"before", "after"})
 """Valid values for the ``when`` parameter on ``@transform``."""
 
+_VALID_CHANNELS = frozenset({"*", "rest", "graphql"})
+"""Valid values for the ``channel`` parameter on decorators."""
+
 
 @dataclass
 class _HandlerEntry:
@@ -68,6 +71,7 @@ class _HandlerEntry:
     operation: str
     handler: Any
     version: str | None = None
+    channel: str = "*"
 
 
 @dataclass
@@ -79,6 +83,7 @@ class _HookEntry:
     event_name: str | None
     handler: EventHandler
     version: str | None = None
+    channel: str = "*"
 
 
 class SlipStreamRegistry:
@@ -110,7 +115,12 @@ class SlipStreamRegistry:
         self._on_hooks: list[_HookEntry] = []
 
     def handler(
-        self, schema: str, operation: str, *, version: str | None = None
+        self,
+        schema: str,
+        operation: str,
+        *,
+        version: str | None = None,
+        channel: str = "*",
     ) -> Callable[[Any], Any]:
         """Register a handler override for a schema + operation.
 
@@ -124,6 +134,8 @@ class SlipStreamRegistry:
                 ``"update"``, ``"delete"``).
             version: Optional schema version to scope to. When ``None``
                 the handler applies to all versions.
+            channel: Transport channel to scope to (``"rest"``, ``"graphql"``,
+                or ``"*"`` for all channels).
 
         Example::
 
@@ -132,15 +144,20 @@ class SlipStreamRegistry:
                 ctx.data.name = ctx.data.name.upper()
                 return await default_service.execute(data=ctx.data, ...)
 
-            @registry.handler("widget", "create", version="2.0.0")
-            async def v2_create(ctx: RequestContext) -> Any:
-                # Only handles version 2.0.0 create requests
+            @registry.handler("widget", "create", channel="graphql")
+            async def graphql_only_create(ctx: RequestContext) -> Any:
+                # Only handles GraphQL create requests
                 ...
         """
         if operation not in _VALID_OPERATIONS:
             raise ValueError(
                 f"Unknown operation '{operation}'. "
                 f"Must be one of: {sorted(_VALID_OPERATIONS)}"
+            )
+        if channel not in _VALID_CHANNELS:
+            raise ValueError(
+                f"Unknown channel '{channel}'. "
+                f"Must be one of: {sorted(_VALID_CHANNELS)}"
             )
 
         def decorator(fn: Any) -> Any:
@@ -150,6 +167,7 @@ class SlipStreamRegistry:
                     operation=operation,
                     handler=fn,
                     version=version,
+                    channel=channel,
                 )
             )
             return fn
@@ -157,7 +175,11 @@ class SlipStreamRegistry:
         return decorator
 
     def guard(
-        self, schema: str, *operations: str, version: str | None = None
+        self,
+        schema: str,
+        *operations: str,
+        version: str | None = None,
+        channel: str = "*",
     ) -> Callable[[EventHandler], EventHandler]:
         """Register an authorization guard for one or more operations.
 
@@ -168,6 +190,7 @@ class SlipStreamRegistry:
             schema: Schema name, or ``"*"`` for all schemas.
             *operations: One or more CRUD operation names.
             version: Optional schema version to scope to.
+            channel: Transport channel (``"rest"``, ``"graphql"``, ``"*"``).
 
         Example::
 
@@ -182,6 +205,11 @@ class SlipStreamRegistry:
                     f"Unknown operation '{op}'. "
                     f"Must be one of: {sorted(_VALID_OPERATIONS)}"
                 )
+        if channel not in _VALID_CHANNELS:
+            raise ValueError(
+                f"Unknown channel '{channel}'. "
+                f"Must be one of: {sorted(_VALID_CHANNELS)}"
+            )
 
         def decorator(fn: EventHandler) -> EventHandler:
             for op in operations:
@@ -192,6 +220,7 @@ class SlipStreamRegistry:
                         event_name=None,
                         handler=fn,
                         version=version,
+                        channel=channel,
                     )
                 )
             return fn
@@ -199,7 +228,11 @@ class SlipStreamRegistry:
         return decorator
 
     def validate(
-        self, schema: str, *operations: str, version: str | None = None
+        self,
+        schema: str,
+        *operations: str,
+        version: str | None = None,
+        channel: str = "*",
     ) -> Callable[[EventHandler], EventHandler]:
         """Register a cross-field validation hook for one or more operations.
 
@@ -210,6 +243,7 @@ class SlipStreamRegistry:
             schema: Schema name, or ``"*"`` for all schemas.
             *operations: One or more CRUD operation names.
             version: Optional schema version to scope to.
+            channel: Transport channel (``"rest"``, ``"graphql"``, ``"*"``).
 
         Example::
 
@@ -224,6 +258,11 @@ class SlipStreamRegistry:
                     f"Unknown operation '{op}'. "
                     f"Must be one of: {sorted(_VALID_OPERATIONS)}"
                 )
+        if channel not in _VALID_CHANNELS:
+            raise ValueError(
+                f"Unknown channel '{channel}'. "
+                f"Must be one of: {sorted(_VALID_CHANNELS)}"
+            )
 
         def decorator(fn: EventHandler) -> EventHandler:
             for op in operations:
@@ -234,6 +273,7 @@ class SlipStreamRegistry:
                         event_name=None,
                         handler=fn,
                         version=version,
+                        channel=channel,
                     )
                 )
             return fn
@@ -246,6 +286,7 @@ class SlipStreamRegistry:
         *operations: str,
         when: str = "before",
         version: str | None = None,
+        channel: str = "*",
     ) -> Callable[[EventHandler], EventHandler]:
         """Register a field transformation hook.
 
@@ -257,6 +298,7 @@ class SlipStreamRegistry:
             *operations: One or more CRUD operation names.
             when: ``"before"`` (pre-hook) or ``"after"`` (post-hook).
             version: Optional schema version to scope to.
+            channel: Transport channel (``"rest"``, ``"graphql"``, ``"*"``).
 
         Example::
 
@@ -275,6 +317,11 @@ class SlipStreamRegistry:
                     f"Unknown operation '{op}'. "
                     f"Must be one of: {sorted(_VALID_OPERATIONS)}"
                 )
+        if channel not in _VALID_CHANNELS:
+            raise ValueError(
+                f"Unknown channel '{channel}'. "
+                f"Must be one of: {sorted(_VALID_CHANNELS)}"
+            )
 
         target = self._transforms_before if when == "before" else self._transforms_after
 
@@ -287,6 +334,7 @@ class SlipStreamRegistry:
                         event_name=None,
                         handler=fn,
                         version=version,
+                        channel=channel,
                     )
                 )
             return fn
