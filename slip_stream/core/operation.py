@@ -13,6 +13,7 @@ GraphQL).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
     from slip_stream.container import EntityRegistration
     from slip_stream.core.context import RequestContext
     from slip_stream.core.events import EventBus
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_handler_override(
@@ -95,6 +98,7 @@ class OperationExecutor:
         Raises:
             HookError: If a pre-hook aborts the operation.
         """
+        logger.debug("execute_create: schema=%s", ctx.schema_name)
         if self.event_bus:
             await self.event_bus.emit("pre_create", ctx)
 
@@ -105,6 +109,7 @@ class OperationExecutor:
             getattr(ctx, "channel", None),
         )
         if override:
+            logger.debug("Using handler override for %s.create", ctx.schema_name)
             ctx.result = await override(ctx)
         else:
             repo = self.registration.repository_class(ctx.db)
@@ -115,6 +120,8 @@ class OperationExecutor:
         if self.event_bus:
             await self.event_bus.emit("post_create", ctx)
 
+        entity_id = getattr(ctx.result, "entity_id", None)
+        logger.info("Created %s entity_id=%s", ctx.schema_name, entity_id)
         return ctx.result
 
     async def execute_get(self, ctx: "RequestContext") -> Any:
@@ -125,6 +132,7 @@ class OperationExecutor:
         Raises:
             HookError: If a pre-hook aborts the operation.
         """
+        logger.debug("execute_get: schema=%s entity_id=%s", ctx.schema_name, ctx.entity_id)
         if self.event_bus:
             await self.event_bus.emit("pre_get", ctx)
 
@@ -135,6 +143,7 @@ class OperationExecutor:
             getattr(ctx, "channel", None),
         )
         if override:
+            logger.debug("Using handler override for %s.get", ctx.schema_name)
             ctx.result = await override(ctx)
         else:
             ctx.result = ctx.entity
@@ -150,6 +159,7 @@ class OperationExecutor:
         Raises:
             HookError: If a pre-hook aborts the operation.
         """
+        logger.debug("execute_list: schema=%s skip=%s limit=%s", ctx.schema_name, ctx.skip, ctx.limit)
         if self.event_bus:
             await self.event_bus.emit("pre_list", ctx)
 
@@ -160,6 +170,7 @@ class OperationExecutor:
             getattr(ctx, "channel", None),
         )
         if override:
+            logger.debug("Using handler override for %s.list", ctx.schema_name)
             ctx.result = await override(ctx)
         else:
             repo = self.registration.repository_class(ctx.db)
@@ -186,6 +197,7 @@ class OperationExecutor:
         Raises:
             HookError: If a pre-hook aborts the operation.
         """
+        logger.debug("execute_update: schema=%s entity_id=%s", ctx.schema_name, ctx.entity_id)
         if self.event_bus:
             await self.event_bus.emit("pre_update", ctx)
 
@@ -196,18 +208,23 @@ class OperationExecutor:
             getattr(ctx, "channel", None),
         )
         if override:
+            logger.debug("Using handler override for %s.update", ctx.schema_name)
             ctx.result = await override(ctx)
         else:
             repo = self.registration.repository_class(ctx.db)
             service = self.registration.services["update"](repo)
             user_id = ctx.current_user.get("id", "anonymous") if ctx.current_user else "anonymous"
-            ctx.result = await service.execute(
+            result = await service.execute(
                 entity_id=ctx.entity_id, data=ctx.data, user_id=user_id,
             )
+            # If no fields changed, return the current entity unchanged
+            ctx.result = result if result is not None else ctx.entity
 
         if self.event_bus:
             await self.event_bus.emit("post_update", ctx)
 
+        version = getattr(ctx.result, "record_version", None)
+        logger.info("Updated %s entity_id=%s record_version=%s", ctx.schema_name, ctx.entity_id, version)
         return ctx.result
 
     async def execute_delete(self, ctx: "RequestContext") -> Any:
@@ -218,6 +235,7 @@ class OperationExecutor:
         Raises:
             HookError: If a pre-hook aborts the operation.
         """
+        logger.debug("execute_delete: schema=%s entity_id=%s", ctx.schema_name, ctx.entity_id)
         if self.event_bus:
             await self.event_bus.emit("pre_delete", ctx)
 
@@ -228,14 +246,16 @@ class OperationExecutor:
             getattr(ctx, "channel", None),
         )
         if override:
+            logger.debug("Using handler override for %s.delete", ctx.schema_name)
             ctx.result = await override(ctx)
         else:
             repo = self.registration.repository_class(ctx.db)
             service = self.registration.services["delete"](repo)
             user_id = ctx.current_user.get("id", "anonymous") if ctx.current_user else "anonymous"
-            await service.execute(entity_id=ctx.entity_id, user_id=user_id)
+            ctx.result = await service.execute(entity_id=ctx.entity_id, user_id=user_id)
 
         if self.event_bus:
             await self.event_bus.emit("post_delete", ctx)
 
+        logger.info("Deleted %s entity_id=%s", ctx.schema_name, ctx.entity_id)
         return ctx.result

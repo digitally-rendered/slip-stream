@@ -84,7 +84,7 @@ class SlipStream:
         self,
         app: FastAPI,
         schema_dir: Optional[Path] = None,
-        api_prefix: str = "/api/v1",
+        api_prefix: Optional[str] = None,
         get_db: Optional[Callable] = None,
         get_current_user: Optional[Callable] = None,
         mongo_uri: Optional[str] = None,
@@ -99,14 +99,14 @@ class SlipStream:
         registry: Optional[SlipStreamRegistry] = None,
         schema_storage: Optional[Any] = None,
         schema_vending: bool = False,
-        schema_vending_prefix: str = "/schemas",
+        schema_vending_prefix: Optional[str] = None,
         graphql: bool = False,
-        graphql_prefix: str = "/graphql",
+        graphql_prefix: Optional[str] = None,
         storage_map: Optional[Dict[str, str]] = None,
         sql_engine: Optional[Any] = None,
         config: Optional[SlipStreamConfig] = None,
     ) -> None:
-        # Merge config values (constructor args override config)
+        # Merge config values (constructor args override config file values)
         cfg = config
 
         self.app = app
@@ -117,7 +117,7 @@ class SlipStream:
             raise ValueError(
                 "schema_dir must be provided either via constructor or config"
             )
-        self.api_prefix = api_prefix if api_prefix != "/api/v1" or cfg is None else (cfg.api_prefix or api_prefix)
+        self.api_prefix = api_prefix or (cfg.api_prefix if cfg else None) or "/api/v1"
         self.get_current_user = get_current_user
         self.models_module = models_module
         self.repositories_module = repositories_module
@@ -130,9 +130,9 @@ class SlipStream:
         self._registry = registry
         self._schema_storage = schema_storage
         self._schema_vending = schema_vending or (cfg.schema_vending if cfg else False)
-        self._schema_vending_prefix = schema_vending_prefix if schema_vending_prefix != "/schemas" or cfg is None else (cfg.schema_vending_prefix or schema_vending_prefix)
+        self._schema_vending_prefix = schema_vending_prefix or (cfg.schema_vending_prefix if cfg else None) or "/schemas"
         self._graphql = graphql or (cfg.graphql_enabled if cfg else False)
-        self._graphql_prefix = graphql_prefix if graphql_prefix != "/graphql" or cfg is None else (cfg.graphql_prefix or graphql_prefix)
+        self._graphql_prefix = graphql_prefix or (cfg.graphql_prefix if cfg else None) or "/graphql"
 
         # Storage routing
         self._storage_map = dict(storage_map or {})

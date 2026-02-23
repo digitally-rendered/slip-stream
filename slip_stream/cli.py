@@ -291,6 +291,59 @@ def cmd_schema_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_schema_test(args: argparse.Namespace) -> int:
+    """Run schemathesis property-based tests against all schemas."""
+    root = _find_project_root()
+    if root is None:
+        print("Error: cannot find project root (no schemas/ directory found).", file=sys.stderr)
+        return 1
+
+    try:
+        from slip_stream.testing.runner import SchemaTestRunner
+    except ImportError:
+        print(
+            "Error: schemathesis is required for schema testing.\n"
+            "Install it with: pip install slip-stream[test]",
+            file=sys.stderr,
+        )
+        return 1
+
+    schemas_dir = root / "schemas"
+    mode = getattr(args, "mode", "lifecycle")
+
+    print(f"Running schema tests from {schemas_dir}...")
+    print()
+
+    runner = SchemaTestRunner(schema_dir=schemas_dir)
+
+    if mode == "lifecycle":
+        results = runner.run_lifecycle_tests()
+        runner.print_results(results)
+        failed = sum(1 for r in results if not r.passed)
+        return 1 if failed else 0
+    elif mode == "fuzz":
+        return runner.run_schemathesis_cli(
+            checks=getattr(args, "checks", "not_a_server_error"),
+        )
+    else:
+        # Run both
+        print("=== Lifecycle Tests ===")
+        print()
+        results = runner.run_lifecycle_tests()
+        runner.print_results(results)
+
+        failed = sum(1 for r in results if not r.passed)
+        if failed:
+            print(f"\n{failed} lifecycle test(s) failed. Skipping fuzz tests.")
+            return 1
+
+        print("\n=== Schemathesis Fuzzing ===")
+        print()
+        return runner.run_schemathesis_cli(
+            checks=getattr(args, "checks", "not_a_server_error"),
+        )
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """Start the development server."""
     root = _find_project_root()
@@ -355,6 +408,22 @@ def build_parser() -> argparse.ArgumentParser:
     # slip schema validate
     schema_sub.add_parser("validate", help="Validate all schemas")
 
+    # slip schema test
+    test_p = schema_sub.add_parser(
+        "test", help="Run property-based tests against all schemas"
+    )
+    test_p.add_argument(
+        "--mode",
+        choices=["lifecycle", "fuzz", "all"],
+        default="lifecycle",
+        help="Test mode: lifecycle (CRUD), fuzz (schemathesis), or all (default: lifecycle)",
+    )
+    test_p.add_argument(
+        "--checks",
+        default="not_a_server_error",
+        help="Comma-separated schemathesis checks (default: not_a_server_error)",
+    )
+
     # slip run
     run_p = sub.add_parser("run", help="Start development server")
     run_p.add_argument("--app", help="App module (default: main:app)")
@@ -378,6 +447,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_schema_list(args)
         elif args.schema_command == "validate":
             return cmd_schema_validate(args)
+        elif args.schema_command == "test":
+            return cmd_schema_test(args)
         else:
             parser.parse_args(["schema", "--help"])
             return 1

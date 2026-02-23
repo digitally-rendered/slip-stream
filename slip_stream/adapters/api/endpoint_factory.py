@@ -5,8 +5,11 @@ because FastAPI needs to resolve dynamic Pydantic model types used in route
 function signatures at decoration time.
 """
 
+import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Union
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.params import Body

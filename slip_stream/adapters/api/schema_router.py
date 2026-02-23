@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 from fastapi import APIRouter
@@ -11,6 +12,8 @@ from slip_stream.core.events import EventBus
 
 if TYPE_CHECKING:
     from slip_stream.container import EntityRegistration
+
+logger = logging.getLogger(__name__)
 
 
 def register_schema_endpoints(

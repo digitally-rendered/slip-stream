@@ -1,5 +1,6 @@
 """Versioned MongoDB CRUD — append-only persistence with soft deletes."""
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
@@ -9,6 +10,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
 from slip_stream.core.domain.base import BaseDocument
+
+logger = logging.getLogger(__name__)
 
 DocumentModelType = TypeVar("DocumentModelType", bound=BaseDocument)
 CreateModelType = TypeVar("CreateModelType", bound=BaseModel)
@@ -109,12 +112,17 @@ class VersionedMongoCRUD(Generic[DocumentModelType, CreateModelType, UpdateModel
         insert_dict = self._prepare_for_insert(insert_dict)
 
         result = await self.db[self.collection_name].insert_one(insert_dict)
+        logger.debug("Inserted into %s: _id=%s", self.collection_name, result.inserted_id)
 
         created_doc_from_db = await self.db[self.collection_name].find_one(
             {"_id": result.inserted_id}
         )
 
         if not created_doc_from_db:
+            logger.error(
+                "Failed to retrieve document after creation: collection=%s _id=%s",
+                self.collection_name, result.inserted_id,
+            )
             raise RuntimeError(
                 f"Failed to retrieve document with _id {str(result.inserted_id)} "
                 f"from collection {self.collection_name} after creation."

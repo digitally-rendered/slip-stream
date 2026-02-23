@@ -83,8 +83,12 @@ class CompositeSchemaStorage:
                 for j in range(i):
                     try:
                         await self._adapters[j].save(name, version, result)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "CompositeSchemaStorage: back-fill to %s failed: %s",
+                            type(self._adapters[j]).__name__,
+                            exc,
+                        )
                 return result
 
         return None
@@ -108,8 +112,12 @@ class CompositeSchemaStorage:
                 for j in range(i):
                     try:
                         await self._adapters[j].save(name, version, schema)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "CompositeSchemaStorage: back-fill to %s failed: %s",
+                            type(self._adapters[j]).__name__,
+                            exc,
+                        )
                 return result
 
         return None
@@ -154,6 +162,11 @@ class CompositeSchemaStorage:
             try:
                 if await adapter.exists(name, version):
                     return True
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "CompositeSchemaStorage: exists check on %s failed: %s",
+                    type(adapter).__name__,
+                    exc,
+                )
                 continue
         return False

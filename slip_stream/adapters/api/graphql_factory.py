@@ -472,6 +472,8 @@ class GraphQLFactory:
             # Hydrate entity for pre-hooks
             repo = reg.repository_class(db)
             entity = await repo.get_by_entity_id(entity_id=uuid.UUID(entity_id))
+            if entity is None:
+                raise ValueError(f"{schema_name} not found")
 
             ctx = _build_graphql_context(
                 request=request,

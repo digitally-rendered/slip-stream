@@ -68,6 +68,18 @@ _VALID_BACKENDS = frozenset({"mongo", "sql"})
 
 
 @dataclass
+class _PublishEntry:
+    """Internal record for a ``@publish`` registration."""
+
+    schema_name: str
+    operations: tuple[str, ...]
+    topic: str | None
+    key: str | None
+    include_data: bool
+    headers: dict[str, str] | None
+
+
+@dataclass
 class _StorageEntry:
     """Internal record for a ``storage()`` registration."""
 
@@ -126,6 +138,8 @@ class SlipStreamRegistry:
         self._transforms_after: list[_HookEntry] = []
         self._on_hooks: list[_HookEntry] = []
         self._storage_entries: list[_StorageEntry] = []
+        self._publish_entries: list[_PublishEntry] = []
+        self._stream_bridge: Any = None
 
     def handler(
         self,
@@ -395,6 +409,105 @@ class SlipStreamRegistry:
 
         return decorator
 
+    def publish(
+        self,
+        schema: str,
+        *operations: str,
+        topic: str | None = None,
+        key: str | None = None,
+        include_data: bool = True,
+        headers: dict[str, str] | None = None,
+    ) -> Callable[[Any], Any]:
+        """Declare that an operation's result should be published to a queue/stream.
+
+        After the operation completes (``post_*`` hook), the result is serialised
+        and published via the :class:`EventStreamBridge` attached to this registry.
+
+        Topic and key support ``{schema_name}``, ``{operation}`` and ``{entity_id}``
+        template variables which are interpolated at publish time.
+
+        Args:
+            schema: Schema name (e.g., ``"order"``), or ``"*"`` for all schemas.
+            *operations: One or more CRUD operations (``"create"``, ``"update"``,
+                ``"delete"``).  Omit to publish on all write operations
+                (create, update, delete).
+            topic: Topic/queue name template.  Defaults to
+                ``"slip-stream.{schema_name}.{operation}"``.
+            key: Partition/group key template.  Defaults to ``"{entity_id}"``.
+            include_data: If ``True`` (default), include the serialised entity
+                payload in the message.
+            headers: Extra static headers merged into every published message.
+
+        Returns:
+            A no-op decorator so ``@publish`` can annotate a class or function
+            for readability.
+
+        Example::
+
+            # Publish order creates and updates to a topic
+            @registry.publish("order", "create", "update",
+                topic="orders.{operation}",
+            )
+            class OrderEvents:
+                pass
+
+            # Publish all write operations for every schema
+            registry.publish("*")
+
+            # Publish deletes to a dead-letter topic
+            @registry.publish("pet", "delete",
+                topic="dead-letters.pets",
+                include_data=False,
+            )
+            class PetDeleteNotice:
+                pass
+        """
+        resolved_ops: tuple[str, ...]
+        if operations:
+            for op in operations:
+                if op not in _VALID_OPERATIONS:
+                    raise ValueError(
+                        f"Unknown operation '{op}'. "
+                        f"Must be one of: {sorted(_VALID_OPERATIONS)}"
+                    )
+            resolved_ops = operations
+        else:
+            # Default: all write operations
+            resolved_ops = ("create", "update", "delete")
+
+        self._publish_entries.append(
+            _PublishEntry(
+                schema_name=schema,
+                operations=resolved_ops,
+                topic=topic,
+                key=key,
+                include_data=include_data,
+                headers=headers,
+            )
+        )
+
+        def decorator(fn: Any) -> Any:
+            return fn
+
+        return decorator
+
+    def set_stream_bridge(self, bridge: Any) -> None:
+        """Attach an :class:`EventStreamBridge` for ``@publish`` delivery.
+
+        Must be called before :meth:`apply` if any ``@publish`` decorators are
+        registered.  ``SlipStream`` calls this automatically when an
+        ``EventStreamBridge`` is configured.
+
+        Args:
+            bridge: An :class:`EventStreamBridge` or any object with an
+                ``adapters`` attribute containing :class:`StreamAdapter` instances.
+        """
+        self._stream_bridge = bridge
+
+    def get_publish_entries(self) -> list[_PublishEntry]:
+        """Return all registered publish entries."""
+        return list(self._publish_entries)
+
     def storage(self, schema: str, *, backend: str = "mongo") -> Callable[[Any], Any]:
         """Assign a storage backend for a schema.
 
@@ -527,14 +640,27 @@ class SlipStreamRegistry:
                 schema_name=entry.schema_name,
             )
 
+        # 5. @publish hooks — wire publish entries as post_* handlers
+        publish_count = 0
+        for entry in self._publish_entries:
+            for op in entry.operations:
+                handler = self._make_publish_handler(entry, op)
+                event_bus.register(
+                    f"post_{op}",
+                    handler,
+                    schema_name=entry.schema_name,
+                )
+                publish_count += 1
+
         logger.info(
             "Registry applied: %d handler(s), %d guard(s), %d validator(s), "
-            "%d transform(s), %d hook(s)",
+            "%d transform(s), %d hook(s), %d publish route(s)",
             len(self._handlers),
             len(self._guards),
             len(self._validators),
             len(self._transforms_before) + len(self._transforms_after),
             len(self._on_hooks),
+            publish_count,
         )
 
     @staticmethod
@@ -594,3 +720,124 @@ class SlipStreamRegistry:
 
         channel_handler.__wrapped__ = handler  # type: ignore[attr-defined]
         return channel_handler
+
+    def _make_publish_handler(
+        self, entry: _PublishEntry, operation: str
+    ) -> EventHandler:
+        """Build a post-hook that publishes ctx.result to stream adapters.
+
+        The handler captures the ``_PublishEntry`` and ``operation`` via
+        closure and delegates to the ``_stream_bridge`` or to any
+        ``StreamAdapter`` instances found in ``ctx.extras["stream_adapters"]``.
+        """
+        import time
+
+        topic_template = entry.topic or "slip-stream.{schema_name}.{operation}"
+        key_template = entry.key or "{entity_id}"
+        include_data = entry.include_data
+        extra_headers = entry.headers or {}
+        bridge_ref = self  # capture registry to access _stream_bridge at call time
+
+        async def publish_hook(ctx: "RequestContext") -> None:
+            # Resolve adapters: bridge on registry, or from ctx.extras
+            adapters: list[Any] = []
+            bridge = bridge_ref._stream_bridge
+            if bridge is not None:
+                adapters.extend(getattr(bridge, "_adapters", []))
+            extras_adapters = getattr(ctx, "extras", {}).get("stream_adapters")
+            if extras_adapters:
+                if isinstance(extras_adapters, list):
+                    adapters.extend(extras_adapters)
+                else:
+                    adapters.append(extras_adapters)
+
+            if not adapters:
+                schema_name = getattr(ctx, "schema_name", "unknown")
+                logger.error(
+                    "@publish(%s, %s) fired but no stream adapters are "
+                    "configured. Set registry.set_stream_bridge() or inject "
+                    "ctx.extras['stream_adapters']. Event data was dropped.",
+                    schema_name,
+                    operation,
+                )
+                return
+
+            # Resolve entity_id
+            entity_id = getattr(ctx, "entity_id", None)
+            if entity_id is None:
+                result = getattr(ctx, "result", None)
+                if result is not None:
+                    entity_id = getattr(result, "entity_id", None)
+            entity_id_str = str(entity_id) if entity_id else ""
+
+            schema_name = getattr(ctx, "schema_name", "unknown")
+
+            # Interpolate templates
+            template_vars = {
+                "schema_name": schema_name,
+                "operation": operation,
+                "entity_id": entity_id_str,
+            }
+            topic = topic_template.format(**template_vars)
+            key = key_template.format(**template_vars) if key_template else None
+
+            # Build payload
+            payload: dict[str, Any] = {
+                "event": operation,
+                "schema_name": schema_name,
+                "entity_id": entity_id_str,
+                "timestamp": time.time(),
+            }
+
+            # User info
+            user = getattr(ctx, "current_user", None)
+            if isinstance(user, dict):
+                payload["user_id"] = user.get("id")
+            elif user is not None:
+                payload["user_id"] = getattr(user, "id", None)
+
+            # Serialise result data
+            if include_data:
+                result = getattr(ctx, "result", None)
+                if result is not None:
+                    if hasattr(result, "model_dump"):
+                        payload["data"] = result.model_dump(mode="json")
+                    elif isinstance(result, dict):
+                        payload["data"] = result
+                    elif isinstance(result, list):
+                        payload["data"] = [
+                            item.model_dump(mode="json")
+                            if hasattr(item, "model_dump")
+                            else item
+                            for item in result
+                        ]
+
+            # Merge headers
+            headers = {
+                "x-event-type": operation,
+                "x-schema-name": schema_name,
+                **extra_headers,
+            }
+
+            # Publish to all adapters
+            for adapter in adapters:
+                try:
+                    await adapter.publish(
+                        topic=topic,
+                        key=key,
+                        payload=payload,
+                        headers=headers,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to publish %s.%s to %s: %s",
+                        schema_name,
+                        operation,
+                        type(adapter).__name__,
+                        exc,
+                    )
+
+        publish_hook.__qualname__ = (
+            f"publish_{entry.schema_name}_{operation}"
+        )
+        return publish_hook

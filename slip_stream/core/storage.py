@@ -19,8 +19,11 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from typing import Dict, List
+
+logger = logging.getLogger(__name__)
 
 
 class StorageBackend(str, Enum):
@@ -70,6 +73,7 @@ class StorageConfig:
                     f"Must be one of: {[b.value for b in StorageBackend]}"
                 ) from None
         self._map[schema_name] = backend
+        logger.debug("Storage route: %s → %s", schema_name, backend.value)
 
     def get(self, schema_name: str) -> StorageBackend:
         """Return the backend for *schema_name*, falling back to the default."""

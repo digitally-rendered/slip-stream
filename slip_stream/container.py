@@ -31,8 +31,11 @@ Usage::
 from __future__ import annotations
 
 import importlib
+import logging
 from dataclasses import dataclass, field
 from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel
 
@@ -64,7 +67,9 @@ def _try_import(module_path: str, attr_name: str) -> Any | None:
     """
     try:
         module = importlib.import_module(module_path)
-        return getattr(module, attr_name)
+        result = getattr(module, attr_name)
+        logger.debug("Override found: %s.%s", module_path, attr_name)
+        return result
     except ImportError:
         return None
     except AttributeError:
@@ -129,9 +134,17 @@ class EntityContainer:
 
     def resolve_all(self, schema_names: list[str]) -> None:
         """Resolve and register every schema name in *schema_names*."""
+        logger.info("Resolving %d schema(s): %s", len(schema_names), ", ".join(schema_names))
         for name in schema_names:
             registration = self._resolve_entity(name)
             self._registrations[name] = registration
+            logger.debug(
+                "Resolved %s: model=%s, repo=%s, backend=%s",
+                name,
+                registration.document_model.__name__,
+                registration.repository_class.__name__,
+                registration.storage_backend,
+            )
 
     def get(self, schema_name: str) -> EntityRegistration:
         """Return the registration for *schema_name*.

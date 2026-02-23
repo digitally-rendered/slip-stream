@@ -31,8 +31,10 @@ from slip_stream.adapters.api.endpoint_factory import EndpointFactory
 
 try:
     from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+    _has_graphql = True
 except ImportError:
-    pass
+    _has_graphql = False
 from slip_stream.adapters.api.schema_router import (
     register_schema_endpoint,
     register_schema_endpoint_from_registration,
@@ -46,8 +48,10 @@ from slip_stream.adapters.persistence.schema.composite_storage import CompositeS
 
 try:
     from slip_stream.adapters.persistence.schema.http_storage import HttpSchemaStorage
+
+    _has_http_storage = True
 except ImportError:
-    pass
+    _has_http_storage = False
 from slip_stream.core.schema.ref_resolver import RefResolver
 from slip_stream.adapters.persistence.db.generic_crud import VersionedMongoCRUD
 from slip_stream.adapters.persistence.db.repository_factory import RepositoryFactory
@@ -90,10 +94,13 @@ try:
     from slip_stream.adapters.persistence.db.sql_repository_factory import (
         SQLRepositoryFactory,
     )
+
+    _has_sql = True
 except ImportError:
-    pass
+    _has_sql = False
 from slip_stream.config import SlipStreamConfig
 from slip_stream.core.storage import StorageBackend, StorageConfig
+from slip_stream.logging_config import configure_logging
 from slip_stream.sdk_generator import generate_sdk
 from slip_stream.core.ports.repository import RepositoryPort
 from slip_stream.core.ports.schema_storage import SchemaStoragePort
@@ -162,14 +169,12 @@ __all__ = [
     # Schema storage
     "FileSchemaStorage",
     "MongoSchemaStorage",
-    "HttpSchemaStorage",
     "CompositeSchemaStorage",
     # Schema utilities
     "RefResolver",
     "create_schema_vending_router",
     # API
     "EndpointFactory",
-    "GraphQLFactory",
     "register_schema_endpoint",
     "register_schema_endpoints",
     "register_schema_endpoint_from_registration",
@@ -199,10 +204,6 @@ __all__ = [
     "StreamEvent",
     "InMemoryStream",
     "EventStreamBridge",
-    # SQL persistence
-    "SQLRepository",
-    "build_table_from_schema",
-    "SQLRepositoryFactory",
     # Storage routing
     "StorageBackend",
     "StorageConfig",
@@ -212,4 +213,14 @@ __all__ = [
     "generate_sdk",
     # Database
     "DatabaseManager",
+    # Logging
+    "configure_logging",
 ]
+
+# Conditionally include optional-dependency exports
+if _has_graphql:
+    __all__.append("GraphQLFactory")
+if _has_http_storage:
+    __all__.append("HttpSchemaStorage")
+if _has_sql:
+    __all__.extend(["SQLRepository", "build_table_from_schema", "SQLRepositoryFactory"])

@@ -538,3 +538,309 @@ class TestRegistryIntegration:
             registry=reg,
         )
         assert slip._event_bus is not None
+
+
+class TestRegistryPublish:
+    """Tests for @registry.publish() decorator."""
+
+    def test_publish_registers_entry(self):
+        reg = SlipStreamRegistry()
+
+        @reg.publish("widget", "create", "update")
+        class WidgetEvents:
+            pass
+
+        assert len(reg._publish_entries) == 1
+        entry = reg._publish_entries[0]
+        assert entry.schema_name == "widget"
+        assert entry.operations == ("create", "update")
+        assert entry.include_data is True
+
+    def test_publish_defaults_to_write_operations(self):
+        reg = SlipStreamRegistry()
+        reg.publish("widget")
+        entry = reg._publish_entries[0]
+        assert entry.operations == ("create", "update", "delete")
+
+    def test_publish_custom_topic_and_key(self):
+        reg = SlipStreamRegistry()
+        reg.publish(
+            "order",
+            "create",
+            topic="orders.{operation}",
+            key="{entity_id}",
+        )
+        entry = reg._publish_entries[0]
+        assert entry.topic == "orders.{operation}"
+        assert entry.key == "{entity_id}"
+
+    def test_publish_invalid_operation_raises(self):
+        reg = SlipStreamRegistry()
+        with pytest.raises(ValueError, match="Unknown operation"):
+            reg.publish("widget", "explode")
+
+    def test_publish_returns_original(self):
+        reg = SlipStreamRegistry()
+
+        class Original:
+            pass
+
+        result = reg.publish("widget", "create")(Original)
+        assert result is Original
+
+    def test_publish_with_custom_headers(self):
+        reg = SlipStreamRegistry()
+        reg.publish(
+            "widget",
+            "create",
+            headers={"x-custom": "value"},
+        )
+        entry = reg._publish_entries[0]
+        assert entry.headers == {"x-custom": "value"}
+
+    def test_publish_include_data_false(self):
+        reg = SlipStreamRegistry()
+        reg.publish("widget", "delete", include_data=False)
+        entry = reg._publish_entries[0]
+        assert entry.include_data is False
+
+    def test_get_publish_entries(self):
+        reg = SlipStreamRegistry()
+        reg.publish("widget", "create")
+        reg.publish("order", "update")
+        entries = reg.get_publish_entries()
+        assert len(entries) == 2
+        assert entries[0].schema_name == "widget"
+        assert entries[1].schema_name == "order"
+
+    def test_publish_wires_post_hooks_on_apply(self, container):
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+        reg.publish("widget", "create", "update")
+        reg.apply(container, bus)
+        # Should register 2 post hooks (post_create, post_update)
+        assert bus.handler_count == 2
+
+    @pytest.mark.asyncio
+    async def test_publish_fires_on_create(self, container):
+        """@publish wires a post_create hook that publishes to adapters."""
+        from slip_stream.adapters.streaming.base import InMemoryStream
+
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+        stream = InMemoryStream()
+
+        reg.publish("widget", "create", topic="widgets.created")
+        reg.set_stream_bridge(type("Bridge", (), {"_adapters": [stream]})())
+        reg.apply(container, bus)
+
+        ctx = _make_ctx("widget", "create")
+        # Simulate a result with entity_id
+        ctx.result = type("FakeResult", (), {
+            "entity_id": "abc-123",
+            "model_dump": lambda self, **kw: {"name": "Test"},
+        })()
+        ctx.current_user = {"id": "user-1"}
+
+        await bus.emit("post_create", ctx)
+
+        assert len(stream.events) == 1
+        event = stream.events[0]
+        assert event.topic == "widgets.created"
+        assert event.key == "abc-123"
+        assert event.payload["event"] == "create"
+        assert event.payload["schema_name"] == "widget"
+        assert event.payload["entity_id"] == "abc-123"
+        assert event.payload["user_id"] == "user-1"
+        assert event.payload["data"] == {"name": "Test"}
+
+    @pytest.mark.asyncio
+    async def test_publish_template_interpolation(self, container):
+        """Topic and key templates are interpolated with context values."""
+        from slip_stream.adapters.streaming.base import InMemoryStream
+
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+        stream = InMemoryStream()
+
+        reg.publish(
+            "widget",
+            "delete",
+            topic="{schema_name}.{operation}.events",
+            key="partition-{entity_id}",
+        )
+        reg.set_stream_bridge(type("Bridge", (), {"_adapters": [stream]})())
+        reg.apply(container, bus)
+
+        ctx = _make_ctx("widget", "delete")
+        ctx.entity_id = "entity-xyz"
+        ctx.result = None
+
+        await bus.emit("post_delete", ctx)
+
+        event = stream.events[0]
+        assert event.topic == "widget.delete.events"
+        assert event.key == "partition-entity-xyz"
+
+    @pytest.mark.asyncio
+    async def test_publish_include_data_false_omits_data(self, container):
+        """When include_data=False, payload has no 'data' key."""
+        from slip_stream.adapters.streaming.base import InMemoryStream
+
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+        stream = InMemoryStream()
+
+        reg.publish("widget", "delete", include_data=False)
+        reg.set_stream_bridge(type("Bridge", (), {"_adapters": [stream]})())
+        reg.apply(container, bus)
+
+        ctx = _make_ctx("widget", "delete")
+        ctx.entity_id = "eid-1"
+        ctx.result = type("R", (), {
+            "entity_id": "eid-1",
+            "model_dump": lambda self, **kw: {"should": "not appear"},
+        })()
+
+        await bus.emit("post_delete", ctx)
+
+        assert "data" not in stream.events[0].payload
+
+    @pytest.mark.asyncio
+    async def test_publish_custom_headers_merged(self, container):
+        """Extra static headers are merged into the message."""
+        from slip_stream.adapters.streaming.base import InMemoryStream
+
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+        stream = InMemoryStream()
+
+        reg.publish(
+            "widget",
+            "create",
+            headers={"x-source": "petstore", "x-env": "test"},
+        )
+        reg.set_stream_bridge(type("Bridge", (), {"_adapters": [stream]})())
+        reg.apply(container, bus)
+
+        ctx = _make_ctx("widget", "create")
+        ctx.result = type("R", (), {
+            "entity_id": "eid",
+            "model_dump": lambda self, **kw: {},
+        })()
+
+        await bus.emit("post_create", ctx)
+
+        headers = stream.events[0].headers
+        assert headers["x-source"] == "petstore"
+        assert headers["x-env"] == "test"
+        assert headers["x-event-type"] == "create"
+        assert headers["x-schema-name"] == "widget"
+
+    @pytest.mark.asyncio
+    async def test_publish_via_ctx_extras_adapters(self, container):
+        """Adapters can be injected via ctx.extras['stream_adapters']."""
+        from slip_stream.adapters.streaming.base import InMemoryStream
+
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+        stream = InMemoryStream()
+
+        reg.publish("widget", "create")
+        # No bridge set — adapters come from ctx.extras
+        reg.apply(container, bus)
+
+        ctx = _make_ctx("widget", "create")
+        ctx.extras = {"stream_adapters": [stream]}
+        ctx.result = type("R", (), {
+            "entity_id": "eid",
+            "model_dump": lambda self, **kw: {"name": "via-extras"},
+        })()
+
+        await bus.emit("post_create", ctx)
+
+        assert len(stream.events) == 1
+        assert stream.events[0].payload["data"] == {"name": "via-extras"}
+
+    @pytest.mark.asyncio
+    async def test_publish_no_adapters_logs_error(self, container, caplog):
+        """When no adapters are available, publish logs an error."""
+        import logging
+
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+
+        reg.publish("widget", "create")
+        reg.apply(container, bus)
+
+        ctx = _make_ctx("widget", "create")
+        ctx.result = type("R", (), {
+            "entity_id": "eid",
+            "model_dump": lambda self, **kw: {},
+        })()
+
+        with caplog.at_level(logging.ERROR, logger="slip_stream.registry"):
+            await bus.emit("post_create", ctx)
+
+        assert any("no stream adapters" in msg.lower() for msg in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_publish_wildcard_schema(self, container):
+        """@publish('*') registers hooks for all write operations."""
+        from slip_stream.adapters.streaming.base import InMemoryStream
+
+        reg = SlipStreamRegistry()
+        bus = EventBus()
+        stream = InMemoryStream()
+
+        reg.publish("*")
+        reg.set_stream_bridge(type("Bridge", (), {"_adapters": [stream]})())
+        reg.apply(container, bus)
+
+        # post_create on any schema should publish
+        ctx = _make_ctx("widget", "create")
+        ctx.result = type("R", (), {
+            "entity_id": "eid",
+            "model_dump": lambda self, **kw: {},
+        })()
+        await bus.emit("post_create", ctx)
+
+        assert len(stream.events) == 1
+        assert stream.events[0].payload["schema_name"] == "widget"
+
+    def test_publish_e2e_via_http(self, registry):
+        """End-to-end: HTTP POST triggers publish to InMemoryStream."""
+        from slip_stream.adapters.streaming.base import InMemoryStream
+
+        reg = SlipStreamRegistry()
+        container_inst = EntityContainer()
+        container_inst.resolve_all(["widget"])
+        registration = container_inst.get("widget")
+        bus = EventBus()
+        stream = InMemoryStream()
+
+        reg.publish("widget", "create", topic="widgets.new")
+        reg.set_stream_bridge(type("Bridge", (), {"_adapters": [stream]})())
+        reg.apply(container_inst, bus)
+
+        app = FastAPI()
+        router = EndpointFactory.create_router_from_registration(
+            registration=registration,
+            get_db=_get_db,
+            get_current_user=_get_current_user,
+            event_bus=bus,
+        )
+        app.include_router(router, prefix="/api/v1/widget")
+
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/widget/",
+            json={"name": "Published Widget", "color": "green"},
+        )
+        assert resp.status_code == 201
+
+        assert len(stream.events) == 1
+        event = stream.events[0]
+        assert event.topic == "widgets.new"
+        assert event.payload["event"] == "create"
+        assert event.payload["data"]["name"] == "Published Widget"

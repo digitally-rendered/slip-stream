@@ -90,3 +90,22 @@ class FilterBase(ABC):
 
         May return the original response or a new ``Response`` object.
         """
+
+    @staticmethod
+    async def _read_body(response: Response) -> bytes:
+        """Read response body from body_iterator or body attribute.
+
+        Handles both streaming (``body_iterator``) and buffered (``body``)
+        Starlette responses.  Returns empty bytes if neither is available.
+        """
+        if hasattr(response, "body_iterator"):
+            chunks = []
+            async for chunk in response.body_iterator:
+                if isinstance(chunk, str):
+                    chunks.append(chunk.encode("utf-8"))
+                else:
+                    chunks.append(chunk)
+            return b"".join(chunks)
+        elif hasattr(response, "body"):
+            return response.body
+        return b""
