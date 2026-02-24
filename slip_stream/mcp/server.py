@@ -2,6 +2,8 @@
 
 Tools exposed:
 
+**Read tools:**
+
 - ``list_schemas`` — list all registered schema names and versions
 - ``get_schema`` — get the full JSON schema definition for a name+version
 - ``get_schema_dag`` — get the dependency graph of all schemas
@@ -9,6 +11,13 @@ Tools exposed:
 - ``describe_entity`` — describe the fields and types for an entity
 - ``query_entity`` — query the REST API for entity data
 - ``query_graphql`` — execute a GraphQL query
+- ``get_topology`` — get the running app's topology (schemas, filters, config)
+
+**Write tools:**
+
+- ``create_schema`` — create a new JSON schema file in the project
+- ``validate_schemas`` — validate all schemas in the project
+- ``generate_sdk`` — generate a typed Python SDK client from schemas
 
 Usage::
 
@@ -48,6 +57,7 @@ def create_mcp_server(
     base_url: str = "http://localhost:8000",
     api_prefix: str = "/api/v1",
     schema_prefix: str = "/schemas",
+    schema_dir: Any | None = None,
 ) -> "Server":
     """Create an MCP server with slip-stream schema tools.
 
@@ -56,6 +66,8 @@ def create_mcp_server(
         base_url: Base URL of the running slip-stream application.
         api_prefix: REST API prefix.
         schema_prefix: Schema vending API prefix.
+        schema_dir: Path to the schema directory for write tools (create_schema,
+            validate_schemas, generate_sdk). If None, write tools will return errors.
 
     Returns:
         An MCP Server instance ready to run.
@@ -218,6 +230,68 @@ def create_mcp_server(
                     "required": ["query"],
                 },
             ),
+            Tool(
+                name="create_schema",
+                description=(
+                    "Create a new JSON schema file in the project's schemas directory. "
+                    "The schema will include all standard slip-stream fields (id, entity_id, "
+                    "versioning, audit fields) plus a 'name' property."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Entity name (e.g. 'widget', 'user_profile')",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional description for the schema",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            ),
+            Tool(
+                name="validate_schemas",
+                description=(
+                    "Validate all JSON schema files in the project's schemas directory. "
+                    "Checks that each schema has a title, version, type=object, and properties."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+            Tool(
+                name="generate_sdk",
+                description=(
+                    "Generate a typed Python SDK client from all schemas in the project. "
+                    "The generated client includes Pydantic models and async CRUD methods "
+                    "for each entity. Requires httpx and pydantic at runtime."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "output_path": {
+                            "type": "string",
+                            "description": "File path to write the generated SDK to (optional, returns code if omitted)",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_topology",
+                description=(
+                    "Get the running application's topology from the /_topology endpoint. "
+                    "Returns the registered schemas, filters, and configuration. "
+                    "Does NOT expose secrets or database URIs."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -237,6 +311,14 @@ def create_mcp_server(
                 return await _handle_query_rest(arguments)
             elif name == "query_graphql":
                 return await _handle_query_graphql(arguments)
+            elif name == "create_schema":
+                return await _handle_create_schema(arguments)
+            elif name == "validate_schemas":
+                return await _handle_validate_schemas()
+            elif name == "generate_sdk":
+                return await _handle_generate_sdk(arguments)
+            elif name == "get_topology":
+                return await _handle_get_topology()
             else:
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]
         except Exception as e:
@@ -426,6 +508,131 @@ def create_mcp_server(
             text=text,
         )]
 
+    async def _handle_create_schema(args: dict) -> list[TextContent]:
+        if schema_dir is None:
+            return [TextContent(
+                type="text",
+                text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
+            )]
+
+        from pathlib import Path
+        from slip_stream.schema_utils import create_schema_file, snake_case
+
+        schemas_path = Path(schema_dir)
+        name = args["name"]
+        description = args.get("description")
+
+        try:
+            target = create_schema_file(schemas_path, name, description)
+        except FileExistsError as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
+
+        snake = snake_case(name)
+        return [TextContent(
+            type="text",
+            text=json.dumps({
+                "created": str(target),
+                "schema_name": snake,
+                "endpoint": f"{api_prefix}/{snake.replace('_', '-')}/",
+            }, indent=2),
+        )]
+
+    async def _handle_validate_schemas() -> list[TextContent]:
+        if schema_dir is None:
+            return [TextContent(
+                type="text",
+                text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
+            )]
+
+        from pathlib import Path
+        from slip_stream.schema_utils import validate_all_schemas
+
+        schemas_path = Path(schema_dir)
+        results = validate_all_schemas(schemas_path)
+
+        if not results:
+            return [TextContent(type="text", text=json.dumps({"schemas": [], "valid": True}, indent=2))]
+
+        output = []
+        all_valid = True
+        for fname, issues in sorted(results.items()):
+            entry = {"file": fname, "valid": len(issues) == 0}
+            if issues:
+                entry["issues"] = issues
+                all_valid = False
+            output.append(entry)
+
+        return [TextContent(
+            type="text",
+            text=json.dumps({
+                "schemas": output,
+                "total": len(output),
+                "valid": all_valid,
+            }, indent=2),
+        )]
+
+    async def _handle_generate_sdk(args: dict) -> list[TextContent]:
+        if schema_dir is None:
+            return [TextContent(
+                type="text",
+                text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
+            )]
+
+        from pathlib import Path
+        from slip_stream.sdk_generator import generate_sdk
+
+        schemas_path = Path(schema_dir)
+        schemas: dict[str, Any] = {}
+        for f in sorted(schemas_path.glob("**/*.json")):
+            try:
+                data = json.loads(f.read_text())
+                schemas[f.stem] = data
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+        if not schemas:
+            return [TextContent(type="text", text="Error: no valid schemas found.")]
+
+        code = generate_sdk(schemas=schemas, base_url=f"{base_url}{api_prefix}")
+
+        output_path = args.get("output_path")
+        if output_path:
+            Path(output_path).write_text(code)
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "written_to": output_path,
+                    "schemas": list(schemas.keys()),
+                    "lines": len(code.splitlines()),
+                }, indent=2),
+            )]
+
+        return [TextContent(type="text", text=code)]
+
+    async def _handle_get_topology() -> list[TextContent]:
+        try:
+            import httpx
+        except ImportError:
+            return [TextContent(
+                type="text",
+                text="Error: httpx required for topology queries. Install with: pip install httpx",
+            )]
+
+        url = f"{base_url}/_topology"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url)
+
+        try:
+            data = resp.json()
+            text = json.dumps(data, indent=2, default=str)
+        except Exception:
+            text = resp.text
+
+        return [TextContent(
+            type="text",
+            text=f"HTTP {resp.status_code}\n\n{text}" if resp.status_code != 200 else text,
+        )]
+
     return server
 
 
@@ -478,6 +685,7 @@ async def main() -> None:
         base_url=args.base_url,
         api_prefix=args.api_prefix,
         schema_prefix=args.schema_prefix,
+        schema_dir=args.schema_dir,
     )
 
     async with stdio_server() as (read_stream, write_stream):

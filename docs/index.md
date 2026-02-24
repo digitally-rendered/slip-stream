@@ -26,6 +26,7 @@ from slip_stream import SlipStream
 slip = SlipStream(
     app=FastAPI(),
     schema_dir=Path("./schemas"),
+    structured_errors=True,       # RFC 7807 error responses
 )
 
 @asynccontextmanager
@@ -37,7 +38,7 @@ app = FastAPI(title="My API", lifespan=lifespan)
 slip.app = app
 ```
 
-Place a JSON schema in `./schemas/widget.json` and you get 5 endpoints:
+Place a JSON schema in `./schemas/widget.json` and you get 5 CRUD endpoints plus operational endpoints:
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -46,6 +47,9 @@ Place a JSON schema in `./schemas/widget.json` and you get 5 endpoints:
 | GET | `/api/v1/widget/{entity_id}` | Get by ID |
 | PATCH | `/api/v1/widget/{entity_id}` | Update |
 | DELETE | `/api/v1/widget/{entity_id}` | Soft-delete |
+| GET | `/health` | Liveness probe |
+| GET | `/ready` | Readiness probe |
+| GET | `/_topology` | App structure |
 
 ## Documentation Index
 
@@ -58,6 +62,9 @@ Place a JSON schema in `./schemas/widget.json` and you get 5 endpoints:
 | [Filters](filters.md) | ASGI filter chain, content negotiation, envelope, projection |
 | [Overrides](overrides.md) | Module-based 4-layer override system |
 | [RequestContext](context.md) | The unified context object |
+| [Errors](errors.md) | RFC 7807 structured error responses |
+| [Observability](observability.md) | Health probes, readiness checks, topology |
+| [MCP Server](mcp.md) | AI agent tools, SDK generation |
 | [API Reference](api-reference.md) | All exported symbols |
 
 ## Architecture
@@ -76,5 +83,9 @@ Place a JSON schema in `./schemas/widget.json` and you get 5 endpoints:
 │              Driven Adapters                 │
 │  MongoDB (Motor) → VersionedMongoCRUD       │
 │  Append-only versioned document storage     │
+├─────────────────────────────────────────────┤
+│              Operational                     │
+│  /health, /ready, /_topology (auto-mounted) │
+│  MCP Server (AI agent tools)                │
 └─────────────────────────────────────────────┘
 ```

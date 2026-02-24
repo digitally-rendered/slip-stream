@@ -15,7 +15,7 @@ class SlipStream:
     def __init__(
         self,
         app: FastAPI,
-        schema_dir: Path,
+        schema_dir: Path | None = None,
         api_prefix: str = "/api/v1",
         get_db: Callable | None = None,
         get_current_user: Callable | None = None,
@@ -29,8 +29,18 @@ class SlipStream:
         services_module: str | None = None,
         controllers_module: str | None = None,
         registry: SlipStreamRegistry | None = None,
+        schema_storage: Any | None = None,
+        schema_vending: bool = False,
+        schema_vending_prefix: str = "/schemas",
+        graphql: bool = False,
+        graphql_prefix: str = "/graphql",
+        storage_map: dict[str, str] | None = None,
+        sql_engine: Any | None = None,
+        config: SlipStreamConfig | None = None,
     ) -> None: ...
 
+    @classmethod
+    def from_config(cls, config_path: Path, app: FastAPI, **kwargs) -> SlipStream: ...
     async def lifespan(self) -> AsyncIterator[None]: ...
     @property
     def container(self) -> EntityContainer: ...
@@ -192,6 +202,7 @@ class RepositoryPort(Protocol):
     async def list_latest_active(self, skip: int = 0, limit: int = 100) -> list: ...
     async def update_by_entity_id(self, entity_id: UUID, data, user_id: str) -> BaseDocument: ...
     async def delete_by_entity_id(self, entity_id: UUID, user_id: str) -> None: ...
+    async def count_active(self, filter_criteria: dict | None = None) -> int: ...
 ```
 
 ### SchemaRegistry
@@ -307,4 +318,106 @@ LIFECYCLE_EVENTS = frozenset({
     "pre_update",  "post_update",
     "pre_delete",  "post_delete",
 })
+```
+
+## Health & Observability
+
+```python
+from slip_stream.adapters.api.health import create_health_router
+from slip_stream.adapters.api.topology import create_topology_router
+```
+
+Auto-mounted by `SlipStream.lifespan()`. See [Observability](observability.md).
+
+### create_health_router
+
+```python
+def create_health_router(
+    db_manager: DatabaseManager | None = None,
+    schema_registry: SchemaRegistry | None = None,
+) -> APIRouter: ...
+```
+
+### create_topology_router
+
+```python
+def create_topology_router(
+    container: EntityContainer,
+    schema_registry: SchemaRegistry,
+    filters: list[FilterBase] | None = None,
+    api_prefix: str = "/api/v1",
+    graphql_enabled: bool = False,
+    graphql_prefix: str = "/graphql",
+    schema_vending_enabled: bool = False,
+    structured_errors: bool = False,
+    storage_default: str = "mongo",
+) -> APIRouter: ...
+```
+
+## Error Handling
+
+```python
+from slip_stream.adapters.api.error_handler import install_error_handlers
+```
+
+Auto-installed when `structured_errors=True`. See [Errors](errors.md).
+
+```python
+def install_error_handlers(app: FastAPI) -> None: ...
+
+ERROR_TYPE_BASE = "https://slip-stream.dev/errors/"
+PROBLEM_JSON = "application/problem+json"
+```
+
+## Schema Utilities
+
+```python
+from slip_stream.schema_utils import (
+    create_schema_file,
+    validate_schema_file,
+    validate_all_schemas,
+    snake_case,
+    title_case,
+    SCHEMA_TEMPLATE,
+)
+```
+
+```python
+def snake_case(name: str) -> str: ...
+def title_case(snake: str) -> str: ...
+def create_schema_file(schemas_dir: Path, name: str, description: str | None = None) -> Path: ...
+def validate_schema_file(path: Path) -> list[str]: ...
+def validate_all_schemas(schemas_dir: Path) -> dict[str, list[str]]: ...
+```
+
+## MCP Server
+
+```python
+from slip_stream.mcp.server import create_mcp_server
+```
+
+See [MCP Server](mcp.md).
+
+```python
+def create_mcp_server(
+    schema_registry: SchemaRegistry | None = None,
+    base_url: str = "http://localhost:8000",
+    api_prefix: str = "/api/v1",
+    schema_prefix: str = "/schemas",
+    schema_dir: Path | str | None = None,
+) -> Server: ...
+```
+
+## SDK Generator
+
+```python
+from slip_stream.sdk_generator import generate_sdk
+```
+
+```python
+def generate_sdk(
+    schemas: dict[str, dict],
+    base_url: str = "http://localhost:8000/api/v1",
+    module_docstring: str | None = None,
+) -> str: ...
 ```

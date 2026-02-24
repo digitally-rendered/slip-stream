@@ -44,7 +44,12 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from slip_stream import SlipStream, SlipStreamRegistry
+from slip_stream import (
+    SlipStream,
+    SlipStreamRegistry,
+    ResponseEnvelopeFilter,
+    FieldProjectionFilter,
+)
 
 # Import the business logic registrations
 from examples.quickstart.advanced.services.order_logic import register_order_logic
@@ -127,6 +132,12 @@ def create_app() -> FastAPI:
         schema_dir=SCHEMAS_DIR,
         api_prefix="/api/v1",
         registry=registry,
+        structured_errors=True,          # RFC 7807 error responses
+        graphql=True,                    # Auto-generated GraphQL API at /graphql
+        filters=[
+            ResponseEnvelopeFilter(),    # Wraps in {data, meta} with pagination
+            FieldProjectionFilter(),     # Enables ?fields=name,status
+        ],
     )
 
     @asynccontextmanager
@@ -173,6 +184,12 @@ def create_app() -> FastAPI:
                 "pets": "/api/v1/pet/",
                 "orders": "/api/v1/order/",
                 "todos": "/api/v1/todo/",
+                "graphql": "/graphql",
+            },
+            "operational": {
+                "health": "/health",
+                "ready": "/ready",
+                "topology": "/_topology",
             },
         }
 

@@ -11,6 +11,11 @@ Then visit http://localhost:8000/docs to see the auto-generated CRUD endpoints:
     - /api/v1/pet/         (5 CRUD endpoints)
     - /api/v1/order/       (5 CRUD endpoints)
     - /api/v1/todo/        (5 CRUD endpoints)
+
+Auto-mounted operational endpoints:
+    - /health              (liveness probe — always 200)
+    - /ready               (readiness — checks DB + schemas)
+    - /_topology           (app structure as JSON)
 """
 
 from contextlib import asynccontextmanager
@@ -18,7 +23,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from slip_stream import SlipStream
+from slip_stream import SlipStream, ResponseEnvelopeFilter, FieldProjectionFilter
 
 SCHEMAS_DIR = Path(__file__).parent / "schemas"
 
@@ -29,6 +34,11 @@ def create_app() -> FastAPI:
         app=FastAPI(),  # placeholder, replaced below
         schema_dir=SCHEMAS_DIR,
         api_prefix="/api/v1",
+        structured_errors=True,          # RFC 7807 error responses
+        filters=[
+            ResponseEnvelopeFilter(),    # Wraps in {data, meta} with pagination
+            FieldProjectionFilter(),     # Enables ?fields=name,status
+        ],
     )
 
     @asynccontextmanager
@@ -56,6 +66,11 @@ def create_app() -> FastAPI:
                 "pets": "/api/v1/pet/",
                 "orders": "/api/v1/order/",
                 "todos": "/api/v1/todo/",
+            },
+            "operational": {
+                "health": "/health",
+                "ready": "/ready",
+                "topology": "/_topology",
             },
         }
 

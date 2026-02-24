@@ -184,6 +184,15 @@ class OperationExecutor:
                 kwargs["sort_order"] = ctx.sort_order
             ctx.result = await service.execute(**kwargs)
 
+            # Fetch total count for pagination metadata
+            if hasattr(repo, "count_active"):
+                try:
+                    ctx.total_count = await repo.count_active(
+                        filter_criteria=getattr(ctx, "filter_criteria", None),
+                    )
+                except Exception:
+                    logger.warning("count_active failed for %s", ctx.schema_name)
+
         if self.event_bus:
             await self.event_bus.emit("post_list", ctx)
 

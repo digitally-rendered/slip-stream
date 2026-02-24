@@ -66,7 +66,7 @@ class RegoPolicyFilter(FilterBase):
     ) -> None:
         self.engine = engine
         self.policy_path = policy_path
-        self.skip_paths = skip_paths or ["/health", "/docs", "/openapi.json"]
+        self.skip_paths = skip_paths or ["/health", "/ready", "/_topology", "/docs", "/openapi.json"]
         self._build_input = build_input
 
     async def on_request(
@@ -92,10 +92,13 @@ class RegoPolicyFilter(FilterBase):
             raise FilterShortCircuit(
                 status_code=503,
                 body=json.dumps({
-                    "error": "Policy evaluation unavailable",
+                    "type": "https://slip-stream.dev/errors/service-unavailable",
+                    "title": "Service Unavailable",
+                    "status": 503,
                     "detail": "Policy service temporarily unavailable",
+                    "instance": path,
                 }),
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/problem+json"},
             )
 
         if not allowed:
@@ -103,10 +106,13 @@ class RegoPolicyFilter(FilterBase):
             raise FilterShortCircuit(
                 status_code=403,
                 body=json.dumps({
-                    "error": "Policy denied",
+                    "type": "https://slip-stream.dev/errors/policy-denied",
+                    "title": "Policy Denied",
+                    "status": 403,
                     "detail": f"Request denied by policy: {self.policy_path}",
+                    "instance": path,
                 }),
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/problem+json"},
             )
 
         # Store policy decision in context for downstream use

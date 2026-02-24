@@ -53,6 +53,12 @@ class RepositoryPort(Protocol[DocT, CreateT, UpdateT]):  # type: ignore[misc]
     ) -> DocT | None:
         """Create a new version with the applied changes and return it, or None if not found."""
 
+    async def count_active(
+        self,
+        filter_criteria: dict[str, Any] | None = None,
+    ) -> int:
+        """Return the total count of active (non-deleted) entities matching the filter."""
+
     async def delete_by_entity_id(
         self,
         entity_id: uuid.UUID,

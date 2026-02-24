@@ -189,6 +189,41 @@ class VersionedMongoCRUD(Generic[DocumentModelType, CreateModelType, UpdateModel
             documents.append(self.model(**doc_from_db))
         return documents
 
+    async def count_active(
+        self,
+        filter_criteria: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Count the total active (non-deleted) entities matching the filter."""
+        pipeline: List[Dict[str, Any]] = []
+
+        if filter_criteria:
+            processed: Dict[str, Any] = {}
+            for key, value in filter_criteria.items():
+                if isinstance(value, uuid.UUID):
+                    processed[key] = self._uuid_to_binary(value)
+                else:
+                    processed[key] = value
+            pipeline.append({"$match": processed})
+
+        pipeline.append({"$sort": {"entity_id": 1, "record_version": -1}})
+        pipeline.append({
+            "$group": {
+                "_id": "$entity_id",
+                "latest_version_doc": {"$first": "$$ROOT"},
+            }
+        })
+        pipeline.append({"$replaceRoot": {"newRoot": "$latest_version_doc"}})
+        pipeline.append({"$match": {"deleted_at": None}})
+        pipeline.append({"$count": "total"})
+
+        cursor = self.db[self.collection_name].aggregate(pipeline)
+        results = []
+        async for doc in cursor:
+            results.append(doc)
+        if results:
+            return results[0]["total"]
+        return 0
+
     async def update_by_entity_id(
         self,
         entity_id: uuid.UUID,

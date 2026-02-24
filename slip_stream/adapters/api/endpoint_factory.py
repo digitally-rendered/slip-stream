@@ -267,8 +267,23 @@ class EndpointFactory:
                 sort_order=ctx.sort_order,
             )
 
+            # Fetch total count for pagination metadata
+            if hasattr(crud, "count_active"):
+                try:
+                    ctx.total_count = await crud.count_active(
+                        filter_criteria=ctx.filter_criteria,
+                    )
+                except Exception:
+                    pass
+
             if event_bus:
                 await event_bus.emit("post_list", ctx)
+
+            # Propagate total_count to filter context for envelope filter
+            if ctx.total_count is not None:
+                filter_ctx = getattr(request.state, "filter_context", None)
+                if filter_ctx is not None:
+                    filter_ctx.extras["total_count"] = ctx.total_count
 
             return ctx.result
 
@@ -554,9 +569,17 @@ class EndpointFactory:
                 sort_order=sort_order,
             )
             try:
-                return await executor.execute_list(ctx)
+                result = await executor.execute_list(ctx)
             except HookError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+
+            # Propagate total_count to filter context for envelope filter
+            if ctx.total_count is not None:
+                filter_ctx = getattr(request.state, "filter_context", None)
+                if filter_ctx is not None:
+                    filter_ctx.extras["total_count"] = ctx.total_count
+
+            return result
 
         @router.patch(
             "/{entity_id}",

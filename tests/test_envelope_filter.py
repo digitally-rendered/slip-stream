@@ -190,3 +190,58 @@ class TestEnvelopeFilterIntegration:
         assert "meta" in body
         assert len(body["data"]) == 2
         assert "pagination" in body["meta"]
+
+
+class TestPaginationTotalCount:
+    """Tests for total_count and has_more in pagination metadata."""
+
+    @pytest.mark.asyncio
+    async def test_total_count_in_pagination(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="skip=0&limit=10")
+        context = FilterContext()
+        context.extras["total_count"] = 42
+        await f.on_request(request, context)
+
+        items = [{"name": f"Item {i}"} for i in range(10)]
+        response = _make_response(items)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["total_count"] == 42
+        assert pagination["has_more"] is True
+        assert pagination["count"] == 10
+
+    @pytest.mark.asyncio
+    async def test_has_more_false_at_end(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="skip=40&limit=10")
+        context = FilterContext()
+        context.extras["total_count"] = 42
+        await f.on_request(request, context)
+
+        items = [{"name": "A"}, {"name": "B"}]
+        response = _make_response(items)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["total_count"] == 42
+        assert pagination["has_more"] is False
+
+    @pytest.mark.asyncio
+    async def test_no_total_count_when_not_set(self):
+        """When total_count is not in extras, pagination omits it."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert "total_count" not in pagination
+        assert "has_more" not in pagination

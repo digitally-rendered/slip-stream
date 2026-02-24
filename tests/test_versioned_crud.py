@@ -171,3 +171,38 @@ class TestVersionedMongoCRUD:
         result = await crud.create(data=data, entity_id=explicit_id)
 
         assert result.entity_id == explicit_id
+
+
+class TestCountActive:
+    """Tests for count_active() method."""
+
+    @pytest.mark.asyncio
+    async def test_count_active_empty(self, crud):
+        """count_active returns 0 when collection is empty."""
+        count = await crud.count_active()
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_count_active_after_creates(self, crud, create_model):
+        """count_active returns the number of active entities."""
+        for i in range(3):
+            await crud.create(create_model(name=f"Widget {i}"))
+        count = await crud.count_active()
+        assert count == 3
+
+    @pytest.mark.asyncio
+    async def test_count_active_excludes_deleted(self, crud, create_model):
+        """count_active excludes soft-deleted entities."""
+        w1 = await crud.create(create_model(name="Keep"))
+        w2 = await crud.create(create_model(name="Delete"))
+        await crud.delete_by_entity_id(w2.entity_id)
+        count = await crud.count_active()
+        assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_count_active_counts_latest_version_only(self, crud, create_model, update_model):
+        """count_active does not double-count updated entities."""
+        w = await crud.create(create_model(name="Original"))
+        await crud.update_by_entity_id(w.entity_id, update_model(name="Updated"))
+        count = await crud.count_active()
+        assert count == 1

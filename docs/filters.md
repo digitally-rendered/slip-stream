@@ -128,13 +128,21 @@ filter = ResponseEnvelopeFilter(include_pagination=True)
   ],
   "meta": {
     "request_id": "550e8400-e29b-41d4-a716-446655440000",
-    "pagination": {"skip": 0, "limit": 100, "count": 2}
+    "pagination": {
+      "skip": 0,
+      "limit": 100,
+      "count": 2,
+      "total_count": 42,
+      "has_more": true
+    }
   }
 }
 ```
 
 - Skips 4xx/5xx error responses and 204 No Content
 - Pagination auto-detected for list endpoints (reads `?skip=` and `?limit=` query params)
+- `total_count` — total matching entities (not just the current page)
+- `has_more` — `true` when there are more results beyond the current page
 - Set `include_pagination=False` to disable pagination metadata
 
 ### FieldProjectionFilter (order=95)

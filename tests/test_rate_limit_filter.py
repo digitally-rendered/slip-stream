@@ -132,7 +132,9 @@ class TestRateLimitResponse:
         exc = results[0]
         assert isinstance(exc, FilterShortCircuit)
         body = json.loads(exc.body)
-        assert body["error"] == "Too Many Requests"
+        assert body["type"] == "https://slip-stream.dev/errors/rate-limited"
+        assert body["title"] == "Rate Limited"
+        assert body["status"] == 429
         assert "detail" in body
 
     @pytest.mark.asyncio

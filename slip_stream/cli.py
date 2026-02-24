@@ -25,35 +25,16 @@ from typing import Sequence
 
 
 # ---------------------------------------------------------------------------
-# Templates
+# Shared utilities (re-exported from schema_utils for CLI use)
 # ---------------------------------------------------------------------------
 
-_SCHEMA_TEMPLATE = """\
-{{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "{title}",
-  "description": "{description}",
-  "version": "1.0.0",
-  "type": "object",
-  "required": ["name"],
-  "properties": {{
-    "id": {{ "type": "string", "format": "uuid" }},
-    "entity_id": {{ "type": "string", "format": "uuid" }},
-    "schema_version": {{ "type": "string", "default": "1.0.0" }},
-    "record_version": {{ "type": "integer", "default": 1 }},
-    "created_at": {{ "type": "string", "format": "date-time" }},
-    "updated_at": {{ "type": "string", "format": "date-time" }},
-    "deleted_at": {{ "type": "string", "format": "date-time" }},
-    "created_by": {{ "type": "string" }},
-    "updated_by": {{ "type": "string" }},
-    "deleted_by": {{ "type": "string" }},
-    "name": {{
-      "type": "string",
-      "description": "Name of the {title_lower}"
-    }}
-  }}
-}}
-"""
+from slip_stream.schema_utils import (
+    SCHEMA_TEMPLATE as _SCHEMA_TEMPLATE,
+    create_schema_file,
+    snake_case as _snake_case,
+    title_case as _title_case,
+    validate_all_schemas,
+)
 
 _MAIN_TEMPLATE = '''\
 """FastAPI application powered by slip-stream.
@@ -106,25 +87,83 @@ MONGO_URI=mongodb://localhost:27017
 DATABASE_NAME={db_name}
 """
 
+_CLAUDE_MD_TEMPLATE = """\
+# {project_title}
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+Powered by [slip-stream](https://pypi.org/project/slip-stream/) — a JSON Schema-driven backend framework for FastAPI + MongoDB.
 
+## How It Works
 
-def _snake_case(name: str) -> str:
-    """Normalise a name to snake_case for file/schema naming."""
-    import re
+Drop a JSON schema file in `schemas/`, restart the server, and slip-stream auto-generates:
+1. **Pydantic models** (Document, Create, Update) from the schema
+2. **MongoDB CRUD operations** with append-only versioning
+3. **FastAPI endpoints** (POST, GET, GET list, PATCH, DELETE)
 
-    s = re.sub(r"[^a-zA-Z0-9]", "_", name)
-    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
-    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
-    return s.lower().strip("_")
+## Project Structure
 
+```
+{project_name}/
+  schemas/          # JSON Schema definitions (add new entities here)
+  main.py           # FastAPI application entry point
+  .env              # Environment variables (MONGO_URI, DATABASE_NAME)
+  CLAUDE.md         # This file — AI agent instructions
+```
 
-def _title_case(snake: str) -> str:
-    """Convert a snake_case string to TitleCase."""
-    return "".join(word.capitalize() for word in snake.split("_"))
+## Adding a New Schema
+
+```bash
+slip schema add my_entity       # Creates schemas/my_entity.json
+slip schema list                 # List all discovered schemas
+slip schema validate             # Validate all schemas
+slip run                         # Start dev server with auto-reload
+```
+
+Or create `schemas/my_entity.json` manually with `title`, `version`, `type: "object"`, and `properties`.
+
+## API Conventions
+
+- **Base URL**: http://localhost:8000/api/v1/
+- **Entity path**: Schema name in kebab-case (`user_profile` -> `/api/v1/user-profile/`)
+- **Endpoints per entity**:
+  - `POST   /api/v1/<entity>/`              — Create
+  - `GET    /api/v1/<entity>/`              — List (`?skip=`, `?limit=`, `?where=`, `?sort=`)
+  - `GET    /api/v1/<entity>/{{entity_id}}` — Get by ID
+  - `PATCH  /api/v1/<entity>/{{entity_id}}` — Update
+  - `DELETE /api/v1/<entity>/{{entity_id}}` — Soft delete
+- **Health**: `GET /health` (liveness), `GET /ready` (readiness)
+- **Topology**: `GET /_topology` (app structure as JSON)
+- **Docs**: `GET /docs` (Swagger UI)
+
+## Customizing with Decorators
+
+```python
+from slip_stream import SlipStreamRegistry, HookError, RequestContext
+
+registry = SlipStreamRegistry()
+
+@registry.guard("my_entity", "delete")
+async def admins_only(ctx: RequestContext) -> None:
+    if ctx.current_user.get("role") != "admin":
+        raise HookError(403, "Admin role required")
+
+@registry.validate("my_entity", "create", "update")
+async def check_name(ctx: RequestContext) -> None:
+    if not ctx.data.name:
+        raise HookError(422, "Name is required")
+
+@registry.handler("my_entity", "create")
+async def custom_create(ctx: RequestContext):
+    # Full control over create logic
+    ...
+```
+
+## Key Technical Details
+
+- **Versioned documents**: Every write creates a new version (append-only, never mutate)
+- **Soft deletes**: DELETE creates a tombstone record with `deleted_at` set
+- **UUID fields**: `entity_id` is stable across versions; `id` is unique per version
+- **Python ^3.12**, **FastAPI**, **Motor** (async MongoDB), **Pydantic v2**
+"""
 
 
 def _find_project_root(start: Path | None = None) -> Path | None:
@@ -181,6 +220,16 @@ def cmd_init(args: argparse.Namespace) -> int:
     )
     print(f"  Created {sample}")
 
+    # Write CLAUDE.md
+    claude_md = project_dir / "CLAUDE.md"
+    claude_md.write_text(
+        _CLAUDE_MD_TEMPLATE.format(
+            project_title=_title_case(_snake_case(project_name)),
+            project_name=project_name,
+        )
+    )
+    print(f"  Created {claude_md}")
+
     print(f"\nProject '{project_name}' initialised.")
     print(f"\n  cd {project_dir}")
     print("  pip install slip-stream")
@@ -195,23 +244,13 @@ def cmd_schema_add(args: argparse.Namespace) -> int:
         print("Error: cannot find project root (no schemas/ directory found).", file=sys.stderr)
         return 1
 
-    name = _snake_case(args.name)
-    title = _title_case(name)
-    schemas_dir = root / "schemas"
-
-    target = schemas_dir / f"{name}.json"
-    if target.exists():
-        print(f"Error: {target} already exists.", file=sys.stderr)
+    try:
+        target = create_schema_file(root / "schemas", args.name, args.description)
+    except FileExistsError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    description = args.description or f"A {title} entity."
-    target.write_text(
-        _SCHEMA_TEMPLATE.format(
-            title=title,
-            description=description,
-            title_lower=title.lower(),
-        )
-    )
+    name = _snake_case(args.name)
     print(f"  Created {target}")
     print(f"  Endpoints will be available at /api/v1/{name}/")
     return 0
@@ -252,42 +291,30 @@ def cmd_schema_validate(args: argparse.Namespace) -> int:
         return 1
 
     schemas_dir = root / "schemas"
-    files = sorted(schemas_dir.glob("**/*.json"))
-    if not files:
+    results = validate_all_schemas(schemas_dir)
+    if not results:
         print("No schemas found.")
         return 0
 
     errors = 0
-    for f in files:
-        name = f.relative_to(schemas_dir)
-        try:
-            data = json.loads(f.read_text())
-        except json.JSONDecodeError as e:
-            print(f"  FAIL  {name}: invalid JSON — {e}")
-            errors += 1
-            continue
-
-        issues: list[str] = []
-        if "title" not in data:
-            issues.append("missing 'title'")
-        if "version" not in data:
-            issues.append("missing 'version'")
-        if data.get("type") != "object":
-            issues.append("'type' must be 'object'")
-        if "properties" not in data:
-            issues.append("missing 'properties'")
-
+    for fname, issues in results.items():
         if issues:
-            print(f"  FAIL  {name}: {', '.join(issues)}")
+            print(f"  FAIL  {fname}: {', '.join(issues)}")
             errors += 1
         else:
-            print(f"  OK    {name} (v{data['version']})")
+            # Read version for display
+            try:
+                data = json.loads((schemas_dir / fname).read_text())
+                version = data.get("version", "?")
+            except Exception:
+                version = "?"
+            print(f"  OK    {fname} (v{version})")
 
     print()
     if errors:
         print(f"{errors} schema(s) failed validation.")
         return 1
-    print(f"All {len(files)} schema(s) valid.")
+    print(f"All {len(results)} schema(s) valid.")
     return 0
 
 

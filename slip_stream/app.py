@@ -372,6 +372,33 @@ class SlipStream:
                 "Schema vending API mounted at %s", self._schema_vending_prefix
             )
 
+        # Mount health and readiness probes
+        from slip_stream.adapters.api.health import create_health_router
+
+        health_router = create_health_router(
+            db_manager=self._db_manager,
+            schema_registry=registry,
+        )
+        self.app.include_router(health_router)
+        logger.info("Health probes mounted at /health, /ready")
+
+        # Mount topology introspection endpoint
+        from slip_stream.adapters.api.topology import create_topology_router
+
+        topology_router = create_topology_router(
+            container=self._container,
+            schema_registry=registry,
+            filters=self._filters,
+            api_prefix=self.api_prefix,
+            graphql_enabled=self._graphql,
+            graphql_prefix=self._graphql_prefix,
+            schema_vending_enabled=self._schema_vending,
+            structured_errors=self._structured_errors,
+            storage_default=self._storage_default,
+        )
+        self.app.include_router(topology_router)
+        logger.info("Topology endpoint mounted at /_topology")
+
         # Mount GraphQL API if enabled
         if self._graphql:
             from slip_stream.adapters.api.graphql_factory import GraphQLFactory

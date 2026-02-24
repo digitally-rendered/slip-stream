@@ -301,7 +301,12 @@ class MappedApiAdapter:
 
 ```python
 # advanced/main.py
-from slip_stream import SlipStream, SlipStreamRegistry
+from slip_stream import (
+    SlipStream,
+    SlipStreamRegistry,
+    ResponseEnvelopeFilter,
+    FieldProjectionFilter,
+)
 from advanced.services.order_logic import register_order_logic
 from advanced.services.pet_logic import register_pet_logic
 from advanced.adapters.shipping import ShipStationAdapter, StubShippingAdapter
@@ -330,6 +335,12 @@ slip = SlipStream(
     schema_dir=SCHEMAS_DIR,
     api_prefix="/api/v1",
     registry=registry,
+    structured_errors=True,          # RFC 7807 error responses
+    graphql=True,                    # Auto-generated GraphQL API at /graphql
+    filters=[
+        ResponseEnvelopeFilter(),    # Wraps in {data, meta} with pagination
+        FieldProjectionFilter(),     # Enables ?fields=name,status
+    ],
 )
 ```
 

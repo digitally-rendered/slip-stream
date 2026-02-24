@@ -109,6 +109,20 @@ class TestInit:
         assert schema["type"] == "object"
         assert "properties" in schema
 
+    def test_creates_claude_md(self, tmp_path):
+        project_dir = tmp_path / "my_api"
+        args = build_parser().parse_args(["init", str(project_dir)])
+        cmd_init(args)
+
+        claude_md = project_dir / "CLAUDE.md"
+        assert claude_md.is_file()
+        content = claude_md.read_text()
+        assert "slip-stream" in content
+        assert "MyApi" in content  # title case of my_api
+        assert "my_api" in content  # project name in structure
+        assert "slip schema add" in content
+        assert "/api/v1/" in content
+
     def test_fails_if_not_empty(self, tmp_path):
         project_dir = tmp_path / "existing"
         project_dir.mkdir()

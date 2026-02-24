@@ -64,6 +64,9 @@ class RequestContext:
     sort_by: Optional[str] = None
     sort_order: int = -1
 
+    # Pagination metadata (populated by list operation)
+    total_count: Optional[int] = None
+
     # Schema version negotiation
     schema_version: Optional[str] = None
 

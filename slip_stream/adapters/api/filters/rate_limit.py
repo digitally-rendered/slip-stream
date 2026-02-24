@@ -129,14 +129,17 @@ class RateLimitFilter(FilterBase):
                 raise FilterShortCircuit(
                     status_code=429,
                     body=json.dumps({
-                        "error": "Too Many Requests",
+                        "type": "https://slip-stream.dev/errors/rate-limited",
+                        "title": "Rate Limited",
+                        "status": 429,
                         "detail": (
                             f"Rate limit of {limit} requests per {window}s exceeded. "
                             f"Retry after {retry_after}s."
                         ),
+                        "instance": path,
                     }),
                     headers={
-                        "Content-Type": "application/json",
+                        "Content-Type": "application/problem+json",
                         "Retry-After": str(retry_after),
                         "X-RateLimit-Limit": str(limit),
                         "X-RateLimit-Remaining": "0",

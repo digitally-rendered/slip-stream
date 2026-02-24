@@ -149,7 +149,7 @@ slip = SlipStream(
         ResponseEnvelopeFilter(),         # Wraps in {data, meta}
         FieldProjectionFilter(),          # Enables ?fields=name,status
     ],
-    structured_errors=True,               # Uniform error JSON format
+    structured_errors=True,               # RFC 7807 error responses
 )
 ```
 
@@ -163,7 +163,13 @@ Now list responses look like:
   ],
   "meta": {
     "request_id": "550e8400-e29b-41d4-a716-446655440000",
-    "pagination": {"skip": 0, "limit": 100, "count": 2}
+    "pagination": {
+      "skip": 0,
+      "limit": 100,
+      "count": 2,
+      "total_count": 42,
+      "has_more": true
+    }
   }
 }
 ```
@@ -196,9 +202,28 @@ curl -X POST http://localhost:8000/api/v1/pet/ \
   -d "name: Buddy\nstatus: available"
 ```
 
+## 9. Health and Observability
+
+Three operational endpoints are auto-mounted by `SlipStream.lifespan()` — no configuration needed:
+
+```
+GET /health       → {"status": "healthy"}
+GET /ready        → {"status": "ready", "checks": {"database": true, "schemas": true}}
+GET /_topology    → {schemas, filters, config}
+```
+
+- `/health` — liveness probe, always 200
+- `/ready` — readiness probe, checks DB connectivity and schema registry (200 or 503)
+- `/_topology` — full app structure as JSON (schemas, filters, config) — no secrets exposed
+
+See [Observability](observability.md) for full details.
+
 ## Next Steps
 
+- [Errors Reference](errors.md) — RFC 7807 structured error format
+- [Observability](observability.md) — health probes, topology endpoint
 - [Decorators Reference](decorators.md) — full API for `@handler`, `@guard`, `@validate`, `@transform`, `@on`
 - [Filters Reference](filters.md) — built-in filters and how to write custom ones
 - [Override System](overrides.md) — module-based overrides for models, repositories, services, controllers
 - [RequestContext](context.md) — what's available in `ctx`
+- [MCP Server](mcp.md) — AI agent tools and SDK generation

@@ -380,6 +380,43 @@ class SQLRepository:
         result = await self._session.execute(query)
         return [self._to_result(row) for row in result.all()]
 
+    async def count_active(
+        self,
+        filter_criteria: dict[str, Any] | None = None,
+    ) -> int:
+        """Count the total active (non-deleted) entities matching the filter."""
+        latest_sub = (
+            sa.select(
+                self._table.c.entity_id,
+                sa.func.max(self._table.c.record_version).label("max_rv"),
+            )
+            .group_by(self._table.c.entity_id)
+            .subquery("latest")
+        )
+
+        query = (
+            sa.select(sa.func.count())
+            .select_from(self._table)
+            .join(
+                latest_sub,
+                sa.and_(
+                    self._table.c.entity_id == latest_sub.c.entity_id,
+                    self._table.c.record_version == latest_sub.c.max_rv,
+                ),
+            )
+            .where(self._table.c.deleted_at.is_(None))
+        )
+
+        if filter_criteria:
+            for field_name, value in filter_criteria.items():
+                if hasattr(self._table.c, field_name):
+                    query = query.where(
+                        getattr(self._table.c, field_name) == value
+                    )
+
+        result = await self._session.execute(query)
+        return result.scalar() or 0
+
     async def update_by_entity_id(
         self,
         entity_id: uuid.UUID,

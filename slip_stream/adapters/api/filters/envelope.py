@@ -69,11 +69,17 @@ class ResponseEnvelopeFilter(FilterBase):
         if isinstance(data, list) and self.include_pagination:
             skip = int(request.query_params.get("skip", "0"))
             limit = int(request.query_params.get("limit", "100"))
-            meta["pagination"] = {
+            count = len(data)
+            pagination: Dict[str, Any] = {
                 "skip": skip,
                 "limit": limit,
-                "count": len(data),
+                "count": count,
             }
+            total_count = context.extras.get("total_count")
+            if total_count is not None:
+                pagination["total_count"] = total_count
+                pagination["has_more"] = (skip + count) < total_count
+            meta["pagination"] = pagination
 
         envelope = {"data": data, "meta": meta}
 

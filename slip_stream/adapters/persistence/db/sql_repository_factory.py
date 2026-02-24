@@ -107,6 +107,15 @@ class SQLRepositoryFactory:
                     entity_id=entity_id, data=data, user_id=user_id
                 )
 
+            async def count_active(
+                self,
+                filter_criteria: dict[str, Any] | None = None,
+            ) -> int:
+                """Count the total active entities matching the filter."""
+                return await self._repo.count_active(
+                    filter_criteria=filter_criteria,
+                )
+
             async def delete_by_entity_id(
                 self, entity_id: Any, user_id: str | None = None
             ) -> Any | None:
@@ -118,5 +127,6 @@ class SQLRepositoryFactory:
         pascal = "".join(word.capitalize() for word in schema_name.split("_"))
         SQLBoundRepository.__name__ = f"{pascal}SQLRepository"
         SQLBoundRepository.__qualname__ = f"{pascal}SQLRepository"
+        SQLBoundRepository._is_auto_generated = True  # type: ignore[attr-defined]
 
         return SQLBoundRepository
