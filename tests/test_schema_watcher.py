@@ -17,24 +17,25 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from slip_stream.core.schema.registry import SchemaRegistry
 from slip_stream.core.schema.watcher import SchemaWatcher
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _write_schema(path: Path, schema: Dict[str, Any]) -> None:
     """Write *schema* as JSON to *path*, updating mtime."""
     path.write_text(json.dumps(schema), encoding="utf-8")
 
 
-def _minimal_schema(name: str, version: str = "1.0.0", extra_field: str | None = None) -> Dict[str, Any]:
+def _minimal_schema(
+    name: str, version: str = "1.0.0", extra_field: str | None = None
+) -> Dict[str, Any]:
     """Return a minimal but valid JSON Schema dict."""
     props: Dict[str, Any] = {"name": {"type": "string"}}
     if extra_field:
@@ -66,6 +67,7 @@ async def _wait_for(condition_fn, timeout: float = 3.0, interval: float = 0.05) 
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def tmp_schema_dir(tmp_path: Path) -> Path:
     """Return an empty temporary directory for schema files."""
@@ -88,7 +90,7 @@ def watcher(tmp_schema_dir: Path, fresh_registry: SchemaRegistry) -> SchemaWatch
     return SchemaWatcher(
         schema_dir=tmp_schema_dir,
         registry=fresh_registry,
-        poll_interval=0.05,    # 50 ms — fast enough for tests
+        poll_interval=0.05,  # 50 ms — fast enough for tests
         debounce_seconds=0.1,  # 100 ms debounce
     )
 
@@ -96,6 +98,7 @@ def watcher(tmp_schema_dir: Path, fresh_registry: SchemaRegistry) -> SchemaWatch
 # ---------------------------------------------------------------------------
 # Lifecycle tests
 # ---------------------------------------------------------------------------
+
 
 class TestSchemaWatcherLifecycle:
     """Tests for start() / stop() behaviour."""
@@ -138,6 +141,7 @@ class TestSchemaWatcherLifecycle:
 # ---------------------------------------------------------------------------
 # File detection tests
 # ---------------------------------------------------------------------------
+
 
 class TestSchemaWatcherFileDetection:
     """Tests for create / modify / delete detection."""
@@ -182,7 +186,8 @@ class TestSchemaWatcherFileDetection:
         _write_schema(schema_path, _minimal_schema("widget", extra_field="colour"))
 
         updated = await _wait_for(
-            lambda: "colour" in fresh_registry.get_schema("widget").get("properties", {})
+            lambda: "colour"
+            in fresh_registry.get_schema("widget").get("properties", {})
         )
         await watcher.stop()
 
@@ -250,7 +255,9 @@ class TestSchemaWatcherFileDetection:
 
         def _has_sku():
             try:
-                return "sku" in fresh_registry.get_schema("product").get("properties", {})
+                return "sku" in fresh_registry.get_schema("product").get(
+                    "properties", {}
+                )
             except ValueError:
                 return False
 
@@ -267,6 +274,7 @@ class TestSchemaWatcherFileDetection:
 # Debounce tests
 # ---------------------------------------------------------------------------
 
+
 class TestSchemaWatcherDebounce:
     """Tests that rapid changes are coalesced into a single reload."""
 
@@ -280,7 +288,9 @@ class TestSchemaWatcherDebounce:
         """Multiple rapid writes to the same file produce exactly one reload call."""
         reload_calls: List[str] = []
 
-        async def capture_reload(name: str, version: str, schema: Dict[str, Any]) -> None:
+        async def capture_reload(
+            name: str, version: str, schema: Dict[str, Any]
+        ) -> None:
             reload_calls.append(name)
 
         # Rebuild watcher with the callback
@@ -298,16 +308,18 @@ class TestSchemaWatcherDebounce:
 
         # Fire 5 rapid writes within a single poll cycle
         for i in range(5):
-            _write_schema(schema_path, _minimal_schema("burst", extra_field=f"field_{i}"))
+            _write_schema(
+                schema_path, _minimal_schema("burst", extra_field=f"field_{i}")
+            )
             await asyncio.sleep(0.01)
 
         # Wait long enough for debounce to fire exactly once
         await asyncio.sleep(0.6)
         await w.stop()
 
-        assert len(reload_calls) == 1, (
-            f"Expected exactly 1 reload call after debounce, got {len(reload_calls)}"
-        )
+        assert (
+            len(reload_calls) == 1
+        ), f"Expected exactly 1 reload call after debounce, got {len(reload_calls)}"
 
     @pytest.mark.asyncio
     async def test_debounce_timer_reset_on_each_change(
@@ -319,8 +331,12 @@ class TestSchemaWatcherDebounce:
         """Each new write resets the debounce timer for that path."""
         reloaded_versions: List[str] = []
 
-        async def capture_version(name: str, version: str, schema: Dict[str, Any]) -> None:
-            reloaded_versions.append(schema.get("properties", {}).get("seq", {}).get("description", ""))
+        async def capture_version(
+            name: str, version: str, schema: Dict[str, Any]
+        ) -> None:
+            reloaded_versions.append(
+                schema.get("properties", {}).get("seq", {}).get("description", "")
+            )
 
         w = SchemaWatcher(
             schema_dir=tmp_schema_dir,
@@ -345,12 +361,15 @@ class TestSchemaWatcherDebounce:
         await w.stop()
 
         # The final schema should reflect v2
-        assert fresh_registry.get_schema("seq")["properties"]["seq"]["description"] == "v2"
+        assert (
+            fresh_registry.get_schema("seq")["properties"]["seq"]["description"] == "v2"
+        )
 
 
 # ---------------------------------------------------------------------------
 # on_reload callback / event emission tests
 # ---------------------------------------------------------------------------
+
 
 class TestSchemaWatcherEventEmission:
     """Tests for the on_reload callback (schema_reloaded event bridge)."""
@@ -376,7 +395,9 @@ class TestSchemaWatcherEventEmission:
         )
         await w.start()
 
-        _write_schema(tmp_schema_dir / "order.json", _minimal_schema("order", version="2.0.0"))
+        _write_schema(
+            tmp_schema_dir / "order.json", _minimal_schema("order", version="2.0.0")
+        )
 
         got_call = await _wait_for(lambda: len(received) > 0)
         await w.stop()
@@ -425,11 +446,13 @@ class TestSchemaWatcherEventEmission:
         async def schema_reloaded_bridge(
             schema_name: str, version: str, schema: Dict[str, Any]
         ) -> None:
-            emitted_events.append({
-                "event": "schema_reloaded",
-                "schema_name": schema_name,
-                "version": version,
-            })
+            emitted_events.append(
+                {
+                    "event": "schema_reloaded",
+                    "schema_name": schema_name,
+                    "version": version,
+                }
+            )
 
         w = SchemaWatcher(
             schema_dir=tmp_schema_dir,
@@ -440,7 +463,9 @@ class TestSchemaWatcherEventEmission:
         )
         await w.start()
 
-        _write_schema(tmp_schema_dir / "invoice.json", _minimal_schema("invoice", version="3.1.0"))
+        _write_schema(
+            tmp_schema_dir / "invoice.json", _minimal_schema("invoice", version="3.1.0")
+        )
 
         fired = await _wait_for(lambda: len(emitted_events) > 0)
         await w.stop()
@@ -483,14 +508,13 @@ class TestSchemaWatcherEventEmission:
         await asyncio.sleep(0.5)  # give time for a delete event to propagate
         await w.stop()
 
-        assert reload_calls == [], (
-            "on_reload should not be called on file deletion"
-        )
+        assert reload_calls == [], "on_reload should not be called on file deletion"
 
 
 # ---------------------------------------------------------------------------
 # Model cache eviction tests
 # ---------------------------------------------------------------------------
+
 
 class TestSchemaWatcherModelCacheEviction:
     """Tests that the Pydantic model cache is cleared on reload."""
@@ -524,7 +548,9 @@ class TestSchemaWatcherModelCacheEviction:
 
         def _has_serial():
             try:
-                return "serial" in fresh_registry.get_schema("device").get("properties", {})
+                return "serial" in fresh_registry.get_schema("device").get(
+                    "properties", {}
+                )
             except ValueError:
                 return False
 
@@ -545,6 +571,7 @@ class TestSchemaWatcherModelCacheEviction:
 # Edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestSchemaWatcherEdgeCases:
     """Tests for invalid files, missing directories, and boundary conditions."""
 
@@ -563,7 +590,9 @@ class TestSchemaWatcherEdgeCases:
         )
         await w.start()
 
-        (tmp_schema_dir / "broken.json").write_text("{ this is not valid json !!!", encoding="utf-8")
+        (tmp_schema_dir / "broken.json").write_text(
+            "{ this is not valid json !!!", encoding="utf-8"
+        )
 
         # Wait several poll cycles — watcher should still be alive
         await asyncio.sleep(0.5)

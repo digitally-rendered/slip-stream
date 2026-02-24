@@ -94,7 +94,9 @@ class TestMongoSchemaStorage:
     @pytest.mark.asyncio
     async def test_decomposed_version_fields(self, db, storage, sample_schema):
         await storage.save("widget", "2.3.4", sample_schema)
-        doc = await db["_schema_registry"].find_one({"name": "widget", "version": "2.3.4"})
+        doc = await db["_schema_registry"].find_one(
+            {"name": "widget", "version": "2.3.4"}
+        )
         assert doc["version_major"] == 2
         assert doc["version_minor"] == 3
         assert doc["version_patch"] == 4

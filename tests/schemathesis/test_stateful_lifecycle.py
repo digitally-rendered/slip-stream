@@ -4,9 +4,10 @@ Tests the full create → get → list → update → delete → verify-404
 lifecycle for each sample schema using the SchemaTestRunner.
 """
 
+from pathlib import Path
+
 import pytest
 from mongomock_motor import AsyncMongoMockClient
-from pathlib import Path
 
 from slip_stream.testing.runner import SchemaTestRunner
 
@@ -39,6 +40,7 @@ def test_lifecycle_all_schemas_pass(lifecycle_runner):
 def test_lifecycle_creates_valid_entity_ids(lifecycle_runner):
     """Created entities must have valid UUID entity_ids."""
     import uuid
+
     from fastapi.testclient import TestClient
 
     app = lifecycle_runner.build_app()

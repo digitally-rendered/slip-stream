@@ -98,9 +98,7 @@ class RateLimitFilter(FilterBase):
     # FilterBase interface
     # ------------------------------------------------------------------
 
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         """Check the rate limit and short-circuit with 429 when exceeded."""
         path = request.url.path
 
@@ -124,20 +122,25 @@ class RateLimitFilter(FilterBase):
                 retry_after = int(reset_in) + 1
                 logger.info(
                     "Rate limit exceeded for key=%s path=%s limit=%d window=%ds",
-                    key, path, limit, window,
+                    key,
+                    path,
+                    limit,
+                    window,
                 )
                 raise FilterShortCircuit(
                     status_code=429,
-                    body=json.dumps({
-                        "type": "https://slip-stream.dev/errors/rate-limited",
-                        "title": "Rate Limited",
-                        "status": 429,
-                        "detail": (
-                            f"Rate limit of {limit} requests per {window}s exceeded. "
-                            f"Retry after {retry_after}s."
-                        ),
-                        "instance": path,
-                    }),
+                    body=json.dumps(
+                        {
+                            "type": "https://slip-stream.dev/errors/rate-limited",
+                            "title": "Rate Limited",
+                            "status": 429,
+                            "detail": (
+                                f"Rate limit of {limit} requests per {window}s exceeded. "
+                                f"Retry after {retry_after}s."
+                            ),
+                            "instance": path,
+                        }
+                    ),
                     headers={
                         "Content-Type": "application/problem+json",
                         "Retry-After": str(retry_after),
@@ -172,9 +175,7 @@ class RateLimitFilter(FilterBase):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _resolve_limit(
-        self, path: str, context: FilterContext
-    ) -> Tuple[int, int]:
+    def _resolve_limit(self, path: str, context: FilterContext) -> Tuple[int, int]:
         """Return (limit, window) for the given path.
 
         Iterates ``per_route_limits`` and picks the longest matching prefix
@@ -190,7 +191,9 @@ class RateLimitFilter(FilterBase):
                 best_cfg = cfg
 
         if best_cfg is not None:
-            return best_cfg.get("limit", self.default_limit), best_cfg.get("window", self.default_window)
+            return best_cfg.get("limit", self.default_limit), best_cfg.get(
+                "window", self.default_window
+            )
 
         return self.default_limit, self.default_window
 
@@ -205,7 +208,11 @@ class RateLimitFilter(FilterBase):
             return self._key_func(request, context)
 
         if context.user:
-            user_id = context.user.get("id") or context.user.get("sub") or context.user.get("username")
+            user_id = (
+                context.user.get("id")
+                or context.user.get("sub")
+                or context.user.get("username")
+            )
             if user_id:
                 return f"user:{user_id}"
 
@@ -238,9 +245,7 @@ class RateLimitFilter(FilterBase):
         if not timestamps:
             del self._store[key]
 
-    def _reset_in(
-        self, timestamps: _Timestamps, window: int, now: float
-    ) -> float:
+    def _reset_in(self, timestamps: _Timestamps, window: int, now: float) -> float:
         """Seconds until the oldest in-window timestamp expires.
 
         Returns ``0.0`` when the deque is empty (window is already clear).

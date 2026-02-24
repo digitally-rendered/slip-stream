@@ -1,8 +1,7 @@
 """Tests for the Rego/OPA policy engine and filter."""
 
-import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from starlette.datastructures import Headers
@@ -14,7 +13,6 @@ from slip_stream.core.policy import (
     OpaRemotePolicy,
     PolicyEvaluationError,
 )
-
 
 # ---------------------------------------------------------------------------
 # InlinePolicy
@@ -51,8 +49,13 @@ class TestInlinePolicy:
         def check_role(input_data):
             return input_data.get("user", {}).get("role") == "admin"
 
-        assert await engine.evaluate("widget/create", {"user": {"role": "admin"}}) is True
-        assert await engine.evaluate("widget/create", {"user": {"role": "viewer"}}) is False
+        assert (
+            await engine.evaluate("widget/create", {"user": {"role": "admin"}}) is True
+        )
+        assert (
+            await engine.evaluate("widget/create", {"user": {"role": "viewer"}})
+            is False
+        )
 
     @pytest.mark.asyncio
     async def test_async_rule(self):
@@ -334,9 +337,7 @@ class TestRegoPolicyFilter:
         f = RegoPolicyFilter(engine=engine)
 
         response = SimpleNamespace(status_code=200)
-        result = await f.on_response(
-            _make_request(), response, FilterContext()
-        )
+        result = await f.on_response(_make_request(), response, FilterContext())
         assert result is response
 
     @pytest.mark.asyncio

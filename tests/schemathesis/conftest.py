@@ -8,14 +8,15 @@ import pytest
 import schemathesis
 from mongomock_motor import AsyncMongoMockClient
 
-from slip_stream.core.schema.registry import SchemaRegistry
 from slip_stream.testing.app_builder import build_test_app
 from slip_stream.testing.checks import register_hex_checks
 
 # Register custom hex-architecture invariant checks
 register_hex_checks()
 
-SAMPLE_SCHEMAS_DIR = __import__("pathlib").Path(__file__).parent.parent / "sample_schemas"
+SAMPLE_SCHEMAS_DIR = (
+    __import__("pathlib").Path(__file__).parent.parent / "sample_schemas"
+)
 
 
 # ---------------------------------------------------------------------------

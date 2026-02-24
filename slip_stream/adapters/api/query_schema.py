@@ -192,9 +192,7 @@ def build_graphql_filter_types(
         # Create operator input for this field's type
         type_key = prop_type
         if type_key not in field_inputs:
-            field_inputs[type_key] = _make_operator_input(
-                name, type_key, python_type
-            )
+            field_inputs[type_key] = _make_operator_input(name, type_key, python_type)
 
     # --- Build the WhereInput type ---
     where_annotations: dict[str, Any] = {}
@@ -219,9 +217,7 @@ def build_graphql_filter_types(
 
     where_ns = {"__annotations__": where_annotations}
     where_ns.update(where_defaults)
-    WhereInput = strawberry.input(
-        type(f"{name}WhereInput", (), where_ns)
-    )
+    WhereInput = strawberry.input(type(f"{name}WhereInput", (), where_ns))
 
     # --- Build the OrderByInput type ---
     order_ns = {
@@ -232,9 +228,7 @@ def build_graphql_filter_types(
         "field": strawberry.UNSET,
         "direction": "asc",
     }
-    OrderByInput = strawberry.input(
-        type(f"{name}OrderByInput", (), order_ns)
-    )
+    OrderByInput = strawberry.input(type(f"{name}OrderByInput", (), order_ns))
 
     return WhereInput, OrderByInput
 
@@ -254,21 +248,23 @@ def _make_operator_input(
         "_gte": Optional[python_type],
         "_lt": Optional[python_type],
         "_lte": Optional[python_type],
-        "_in": Optional[list[python_type]],
-        "_nin": Optional[list[python_type]],
+        "_in": Optional[list[python_type]],  # type: ignore[valid-type]
+        "_nin": Optional[list[python_type]],  # type: ignore[valid-type]
         "_exists": Optional[bool],
         "_is_null": Optional[bool],
     }
 
     # Text operators only for strings
     if python_type is str:
-        annotations.update({
-            "_like": Optional[str],
-            "_ilike": Optional[str],
-            "_contains": Optional[str],
-            "_startswith": Optional[str],
-            "_endswith": Optional[str],
-        })
+        annotations.update(
+            {
+                "_like": Optional[str],
+                "_ilike": Optional[str],
+                "_contains": Optional[str],
+                "_startswith": Optional[str],
+                "_endswith": Optional[str],
+            }
+        )
 
     defaults: dict[str, Any] = {k: strawberry.UNSET for k in annotations}
 

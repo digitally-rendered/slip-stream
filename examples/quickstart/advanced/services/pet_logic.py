@@ -72,5 +72,6 @@ def register_pet_logic(registry: SlipStreamRegistry) -> None:
         status = getattr(ctx.data, "status", None)
         if status is not None and status not in allowed:
             raise HookError(
-                422, f"Invalid status '{status}'. Must be one of: {', '.join(sorted(allowed))}"
+                422,
+                f"Invalid status '{status}'. Must be one of: {', '.join(sorted(allowed))}",
             )

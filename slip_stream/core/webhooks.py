@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class WebhookRegistration:
     """A registered webhook endpoint."""
+
     url: str
     schema_name: str
     events: list[str]
@@ -58,6 +59,7 @@ class WebhookRegistration:
 @dataclass
 class WebhookDelivery:
     """Record of a webhook delivery attempt."""
+
     webhook_url: str
     event: str
     schema_name: str
@@ -227,7 +229,9 @@ class WebhookDispatcher:
                 last_error = str(e)
                 logger.warning(
                     "Webhook delivery attempt %d/%d failed: %s",
-                    attempt + 1, webhook.max_retries, e,
+                    attempt + 1,
+                    webhook.max_retries,
+                    e,
                 )
 
         delivery = WebhookDelivery(
@@ -247,7 +251,8 @@ class WebhookDispatcher:
     ) -> list[WebhookRegistration]:
         """Find webhooks matching an event and schema."""
         return [
-            w for w in self._webhooks
+            w
+            for w in self._webhooks
             if w.active
             and event in w.events
             and (w.schema_name == "*" or w.schema_name == schema_name)
@@ -257,7 +262,9 @@ class WebhookDispatcher:
     # EventBus handlers
     # ------------------------------------------------------------------
 
-    def _extract_ctx(self, ctx: Any) -> tuple[str, Optional[str], Optional[dict], Optional[str], str]:
+    def _extract_ctx(
+        self, ctx: Any
+    ) -> tuple[str, Optional[str], Optional[dict], Optional[str], str]:
         """Extract common fields from a RequestContext."""
         schema_name = getattr(ctx, "schema_name", "unknown")
         entity_id = getattr(ctx, "entity_id", None)

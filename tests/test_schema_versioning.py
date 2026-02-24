@@ -3,6 +3,7 @@
 import pytest
 from pydantic import BaseModel
 
+from slip_stream.core.schema.registry import SchemaRegistry
 from slip_stream.core.schema.versioning import (
     compare_versions,
     is_valid_semver,
@@ -10,8 +11,6 @@ from slip_stream.core.schema.versioning import (
     parse_semver,
     sort_versions,
 )
-from slip_stream.core.schema.registry import SchemaRegistry
-
 
 # ---------------------------------------------------------------------------
 # Semver utilities
@@ -150,7 +149,10 @@ class TestRegistryVersioning:
         )
         registry.register_schema(
             "test_entity",
-            {"type": "object", "properties": {"name": {"type": "string"}, "extra": {"type": "string"}}},
+            {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "extra": {"type": "string"}},
+            },
             version="1.10.0",
         )
         schema = registry.get_schema("test_entity", "latest")
@@ -158,9 +160,15 @@ class TestRegistryVersioning:
 
     def test_get_all_versions(self, tmp_path):
         registry = SchemaRegistry(schema_dir=tmp_path)
-        registry.register_schema("versioned", {"type": "object", "properties": {}}, "2.0.0")
-        registry.register_schema("versioned", {"type": "object", "properties": {}}, "1.0.0")
-        registry.register_schema("versioned", {"type": "object", "properties": {}}, "1.5.0")
+        registry.register_schema(
+            "versioned", {"type": "object", "properties": {}}, "2.0.0"
+        )
+        registry.register_schema(
+            "versioned", {"type": "object", "properties": {}}, "1.0.0"
+        )
+        registry.register_schema(
+            "versioned", {"type": "object", "properties": {}}, "1.5.0"
+        )
         assert registry.get_all_versions("versioned") == ["1.0.0", "1.5.0", "2.0.0"]
 
     def test_get_all_versions_unknown_schema_raises(self, tmp_path):
@@ -170,18 +178,29 @@ class TestRegistryVersioning:
 
     def test_get_latest_version(self, tmp_path):
         registry = SchemaRegistry(schema_dir=tmp_path)
-        registry.register_schema("v_test", {"type": "object", "properties": {}}, "3.0.0")
-        registry.register_schema("v_test", {"type": "object", "properties": {}}, "1.0.0")
+        registry.register_schema(
+            "v_test", {"type": "object", "properties": {}}, "3.0.0"
+        )
+        registry.register_schema(
+            "v_test", {"type": "object", "properties": {}}, "1.0.0"
+        )
         assert registry.get_latest_version("v_test") == "3.0.0"
 
     def test_get_model_for_version(self, tmp_path):
         registry = SchemaRegistry(schema_dir=tmp_path)
         registry.register_schema(
             "mtest",
-            {"type": "object", "version": "1.0.0", "required": ["name"], "properties": {"name": {"type": "string"}}},
+            {
+                "type": "object",
+                "version": "1.0.0",
+                "required": ["name"],
+                "properties": {"name": {"type": "string"}},
+            },
             version="1.0.0",
         )
-        doc_model, create_model, update_model = registry.get_model_for_version("mtest", "1.0.0")
+        doc_model, create_model, update_model = registry.get_model_for_version(
+            "mtest", "1.0.0"
+        )
         assert issubclass(doc_model, BaseModel)
         assert issubclass(create_model, BaseModel)
         assert issubclass(update_model, BaseModel)
@@ -190,7 +209,11 @@ class TestRegistryVersioning:
         registry = SchemaRegistry(schema_dir=tmp_path)
         registry.register_schema(
             "cached",
-            {"type": "object", "version": "1.0.0", "properties": {"name": {"type": "string"}}},
+            {
+                "type": "object",
+                "version": "1.0.0",
+                "properties": {"name": {"type": "string"}},
+            },
             version="1.0.0",
         )
         triple1 = registry.get_model_for_version("cached", "1.0.0")
@@ -204,7 +227,11 @@ class TestRegistryVersioning:
         registry = SchemaRegistry(schema_dir=tmp_path)
         registry.register_schema(
             "latest_test",
-            {"type": "object", "version": "1.0.0", "properties": {"x": {"type": "integer"}}},
+            {
+                "type": "object",
+                "version": "1.0.0",
+                "properties": {"x": {"type": "integer"}},
+            },
             version="1.0.0",
         )
         triple_explicit = registry.get_model_for_version("latest_test", "1.0.0")

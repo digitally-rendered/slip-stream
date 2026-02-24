@@ -16,13 +16,15 @@ Requires ``strawberry-graphql[fastapi]`` (optional dependency)::
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from slip_stream.core.events import HookError
+
+if TYPE_CHECKING:
+    from slip_stream.core.context import RequestContext
 
 logger = logging.getLogger(__name__)
 
@@ -66,18 +68,27 @@ def _json_type_to_strawberry(field_def: dict[str, Any]) -> Any:
     if json_type == "array":
         items = field_def.get("items", {})
         item_type = _json_type_to_strawberry(items)
-        return List[item_type]
+        return List[item_type]  # type: ignore[valid-type]
     if json_type == "object":
         return JSON
     return str
 
 
 # Fields managed by the framework envelope
-_AUDIT_FIELDS = frozenset({
-    "id", "entity_id", "schema_version", "record_version",
-    "created_at", "updated_at", "deleted_at",
-    "created_by", "updated_by", "deleted_by",
-})
+_AUDIT_FIELDS = frozenset(
+    {
+        "id",
+        "entity_id",
+        "schema_version",
+        "record_version",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by",
+        "updated_by",
+        "deleted_by",
+    }
+)
 
 
 class GraphQLFactory:
@@ -186,7 +197,9 @@ class GraphQLFactory:
 
         ns = {"__annotations__": annotations, **defaults}
         entity_cls = type(pascal, (), ns)
-        return strawberry.type(entity_cls, description=f"Auto-generated type for {schema_name}")
+        return strawberry.type(
+            entity_cls, description=f"Auto-generated type for {schema_name}"
+        )
 
     def _create_input_types(
         self, pascal: str, properties: dict, required: list[str]
@@ -240,6 +253,7 @@ class GraphQLFactory:
         """
         # Register all entity types in this module's globals so Strawberry can resolve them
         import sys
+
         this_module = sys.modules[__name__]
         for schema_name, et in entity_types.items():
             setattr(this_module, et.__name__, et)
@@ -250,10 +264,14 @@ class GraphQLFactory:
             for schema_name, reg in registrations.items():
                 et = entity_types[schema_name]
 
-                get_fn = self._make_get_resolver(schema_name, et, reg, get_db, event_bus)
+                get_fn = self._make_get_resolver(
+                    schema_name, et, reg, get_db, event_bus
+                )
                 methods[f"get_{schema_name}"] = strawberry.field(resolver=get_fn)
 
-                list_fn = self._make_list_resolver(schema_name, et, reg, get_db, event_bus)
+                list_fn = self._make_list_resolver(
+                    schema_name, et, reg, get_db, event_bus
+                )
                 methods[f"list_{schema_name}s"] = strawberry.field(resolver=list_fn)
 
             dag_fn = self._make_schema_dag_resolver(schema_registry)
@@ -277,21 +295,31 @@ class GraphQLFactory:
                 create_fn = self._make_create_resolver(
                     schema_name, et, create_input, reg, get_db, event_bus
                 )
-                methods[f"create_{schema_name}"] = strawberry.mutation(resolver=create_fn)
+                methods[f"create_{schema_name}"] = strawberry.mutation(
+                    resolver=create_fn
+                )
 
                 update_fn = self._make_update_resolver(
                     schema_name, et, update_input, reg, get_db, event_bus
                 )
-                methods[f"update_{schema_name}"] = strawberry.mutation(resolver=update_fn)
+                methods[f"update_{schema_name}"] = strawberry.mutation(
+                    resolver=update_fn
+                )
 
-                delete_fn = self._make_delete_resolver(schema_name, reg, get_db, event_bus)
-                methods[f"delete_{schema_name}"] = strawberry.mutation(resolver=delete_fn)
+                delete_fn = self._make_delete_resolver(
+                    schema_name, reg, get_db, event_bus
+                )
+                methods[f"delete_{schema_name}"] = strawberry.mutation(
+                    resolver=delete_fn
+                )
 
         ns = {**methods}
         cls = type(class_name, (), ns)
         return strawberry.type(cls)
 
-    def _make_get_resolver(self, schema_name, entity_type, registration, get_db, event_bus=None):
+    def _make_get_resolver(
+        self, schema_name, entity_type, registration, get_db, event_bus=None
+    ):
         et = entity_type
         reg = registration
 
@@ -315,6 +343,7 @@ class GraphQLFactory:
             )
 
             from slip_stream.core.operation import OperationExecutor
+
             executor = OperationExecutor(reg, event_bus)
             try:
                 result = await executor.execute_get(ctx)
@@ -324,10 +353,16 @@ class GraphQLFactory:
             return _model_to_strawberry(result, et)
 
         resolver.__name__ = f"get_{schema_name}"
-        resolver.__annotations__ = {"info": Info, "entity_id": str, "return": Optional[et]}
+        resolver.__annotations__ = {
+            "info": Info,
+            "entity_id": str,
+            "return": Optional[et],
+        }
         return resolver
 
-    def _make_list_resolver(self, schema_name, entity_type, registration, get_db, event_bus=None):
+    def _make_list_resolver(
+        self, schema_name, entity_type, registration, get_db, event_bus=None
+    ):
         et = entity_type
         reg = registration
 
@@ -342,7 +377,12 @@ class GraphQLFactory:
             request = info.context.get("request")
 
             # Parse where clause through safe DSL
-            from slip_stream.core.query import QueryDSL, QueryValidationError, parse_sort_param
+            from slip_stream.core.query import (
+                QueryDSL,
+                QueryValidationError,
+                parse_sort_param,
+            )
+
             schema_dict = getattr(reg, "schema_dict", None) or {}
             dsl = QueryDSL.from_schema(schema_dict) if schema_dict else QueryDSL()
 
@@ -352,7 +392,7 @@ class GraphQLFactory:
 
             if where:
                 try:
-                    filter_criteria = dsl.to_mongo(where)
+                    filter_criteria = dsl.to_mongo(where)  # type: ignore[arg-type]
                 except QueryValidationError as e:
                     raise ValueError(str(e)) from e
 
@@ -380,6 +420,7 @@ class GraphQLFactory:
             )
 
             from slip_stream.core.operation import OperationExecutor
+
             executor = OperationExecutor(reg, event_bus)
             try:
                 result = await executor.execute_list(ctx)
@@ -390,13 +431,24 @@ class GraphQLFactory:
 
         resolver.__name__ = f"list_{schema_name}s"
         resolver.__annotations__ = {
-            "info": Info, "skip": int, "limit": int,
-            "where": Optional[strawberry.scalars.JSON], "sort": Optional[str],
+            "info": Info,
+            "skip": int,
+            "limit": int,
+            "where": Optional[strawberry.scalars.JSON],
+            "sort": Optional[str],
             "return": List[et],
         }
         return resolver
 
-    def _make_create_resolver(self, schema_name, entity_type, create_input, registration, get_db, event_bus=None):
+    def _make_create_resolver(
+        self,
+        schema_name,
+        entity_type,
+        create_input,
+        registration,
+        get_db,
+        event_bus=None,
+    ):
         et = entity_type
         ci = create_input
         reg = registration
@@ -416,6 +468,7 @@ class GraphQLFactory:
             )
 
             from slip_stream.core.operation import OperationExecutor
+
             executor = OperationExecutor(reg, event_bus)
             try:
                 result = await executor.execute_create(ctx)
@@ -428,7 +481,15 @@ class GraphQLFactory:
         resolver.__annotations__ = {"info": Info, "input": ci, "return": et}
         return resolver
 
-    def _make_update_resolver(self, schema_name, entity_type, update_input, registration, get_db, event_bus=None):
+    def _make_update_resolver(
+        self,
+        schema_name,
+        entity_type,
+        update_input,
+        registration,
+        get_db,
+        event_bus=None,
+    ):
         et = entity_type
         ui = update_input
         reg = registration
@@ -437,7 +498,9 @@ class GraphQLFactory:
             db = await _resolve_db(info, get_db)
             request = info.context.get("request")
 
-            input_dict = {k: v for k, v in strawberry.asdict(input).items() if v is not None}
+            input_dict = {
+                k: v for k, v in strawberry.asdict(input).items() if v is not None
+            }
             data = reg.update_model(**input_dict)
             ctx = _build_graphql_context(
                 request=request,
@@ -450,6 +513,7 @@ class GraphQLFactory:
             )
 
             from slip_stream.core.operation import OperationExecutor
+
             executor = OperationExecutor(reg, event_bus)
             try:
                 result = await executor.execute_update(ctx)
@@ -459,7 +523,12 @@ class GraphQLFactory:
             return _model_to_strawberry(result, et)
 
         resolver.__name__ = f"update_{schema_name}"
-        resolver.__annotations__ = {"info": Info, "entity_id": str, "input": ui, "return": Optional[et]}
+        resolver.__annotations__ = {
+            "info": Info,
+            "entity_id": str,
+            "input": ui,
+            "return": Optional[et],
+        }
         return resolver
 
     def _make_delete_resolver(self, schema_name, registration, get_db, event_bus=None):
@@ -486,6 +555,7 @@ class GraphQLFactory:
             )
 
             from slip_stream.core.operation import OperationExecutor
+
             executor = OperationExecutor(reg, event_bus)
             try:
                 await executor.execute_delete(ctx)
@@ -514,7 +584,7 @@ class GraphQLFactory:
                     "latest_version": latest,
                     "dependencies": deps,
                 }
-            return dag
+            return dag  # type: ignore[return-value]
 
         return schema_dag
 
@@ -523,6 +593,7 @@ async def _resolve_db(info: "Info", get_db: Any) -> Any:
     """Resolve the database from the request context."""
     if hasattr(get_db, "__call__"):
         from inspect import iscoroutinefunction
+
         if iscoroutinefunction(get_db):
             return await get_db()
         return get_db()
@@ -587,7 +658,7 @@ def _build_graphql_context(
     if request is not None and hasattr(request, "headers"):
         ctx = RequestContext.from_request(
             request=request,
-            operation=operation,
+            operation=operation,  # type: ignore[arg-type]
             schema_name=schema_name,
             **kwargs,
         )
@@ -598,12 +669,14 @@ def _build_graphql_context(
     from types import SimpleNamespace
 
     fake_request = SimpleNamespace(
-        headers={}, state=SimpleNamespace(), query_params={},
+        headers={},
+        state=SimpleNamespace(),
+        query_params={},
         url=SimpleNamespace(path="/graphql"),
     )
     return RequestContext(
-        request=fake_request,
-        operation=operation,
+        request=fake_request,  # type: ignore[arg-type]
+        operation=operation,  # type: ignore[arg-type]
         schema_name=schema_name,
         channel="graphql",
         **kwargs,

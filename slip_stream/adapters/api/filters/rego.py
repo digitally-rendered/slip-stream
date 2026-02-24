@@ -66,12 +66,16 @@ class RegoPolicyFilter(FilterBase):
     ) -> None:
         self.engine = engine
         self.policy_path = policy_path
-        self.skip_paths = skip_paths or ["/health", "/ready", "/_topology", "/docs", "/openapi.json"]
+        self.skip_paths = skip_paths or [
+            "/health",
+            "/ready",
+            "/_topology",
+            "/docs",
+            "/openapi.json",
+        ]
         self._build_input = build_input
 
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         path = request.url.path
 
         # Skip configured paths
@@ -91,13 +95,15 @@ class RegoPolicyFilter(FilterBase):
             logger.error("Policy evaluation error: %s", e)
             raise FilterShortCircuit(
                 status_code=503,
-                body=json.dumps({
-                    "type": "https://slip-stream.dev/errors/service-unavailable",
-                    "title": "Service Unavailable",
-                    "status": 503,
-                    "detail": "Policy service temporarily unavailable",
-                    "instance": path,
-                }),
+                body=json.dumps(
+                    {
+                        "type": "https://slip-stream.dev/errors/service-unavailable",
+                        "title": "Service Unavailable",
+                        "status": 503,
+                        "detail": "Policy service temporarily unavailable",
+                        "instance": path,
+                    }
+                ),
                 headers={"Content-Type": "application/problem+json"},
             )
 
@@ -105,13 +111,15 @@ class RegoPolicyFilter(FilterBase):
             logger.info("Policy denied: %s %s", request.method, path)
             raise FilterShortCircuit(
                 status_code=403,
-                body=json.dumps({
-                    "type": "https://slip-stream.dev/errors/policy-denied",
-                    "title": "Policy Denied",
-                    "status": 403,
-                    "detail": f"Request denied by policy: {self.policy_path}",
-                    "instance": path,
-                }),
+                body=json.dumps(
+                    {
+                        "type": "https://slip-stream.dev/errors/policy-denied",
+                        "title": "Policy Denied",
+                        "status": 403,
+                        "detail": f"Request denied by policy: {self.policy_path}",
+                        "instance": path,
+                    }
+                ),
                 headers={"Content-Type": "application/problem+json"},
             )
 

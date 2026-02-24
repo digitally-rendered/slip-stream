@@ -336,9 +336,7 @@ class SlipStreamRegistry:
                     ctx.data.email = ctx.data.email.lower().strip()
         """
         if when not in _VALID_WHENS:
-            raise ValueError(
-                f"'when' must be 'before' or 'after', got '{when}'"
-            )
+            raise ValueError(f"'when' must be 'before' or 'after', got '{when}'")
         for op in operations:
             if op not in _VALID_OPERATIONS:
                 raise ValueError(
@@ -540,9 +538,7 @@ class SlipStreamRegistry:
                 f"Must be one of: {sorted(_VALID_BACKENDS)}"
             )
 
-        self._storage_entries.append(
-            _StorageEntry(schema_name=schema, backend=backend)
-        )
+        self._storage_entries.append(_StorageEntry(schema_name=schema, backend=backend))
 
         def decorator(fn: Any) -> Any:
             return fn
@@ -596,60 +592,61 @@ class SlipStreamRegistry:
             registration.handler_overrides[key] = entry.handler
 
         # 2. Register pre_* hooks in order: guards → validators → before-transforms
-        for entry in self._guards:
-            handler = self._wrap_version_hook(entry.handler, entry.version)
-            handler = self._wrap_channel_hook(handler, entry.channel)
+        for guard in self._guards:
+            handler = self._wrap_version_hook(guard.handler, guard.version)
+            handler = self._wrap_channel_hook(handler, guard.channel)
             event_bus.register(
-                f"pre_{entry.operation}",
+                f"pre_{guard.operation}",
                 handler,
-                schema_name=entry.schema_name,
+                schema_name=guard.schema_name,
             )
 
-        for entry in self._validators:
-            handler = self._wrap_version_hook(entry.handler, entry.version)
-            handler = self._wrap_channel_hook(handler, entry.channel)
+        for validator in self._validators:
+            handler = self._wrap_version_hook(validator.handler, validator.version)
+            handler = self._wrap_channel_hook(handler, validator.channel)
             event_bus.register(
-                f"pre_{entry.operation}",
+                f"pre_{validator.operation}",
                 handler,
-                schema_name=entry.schema_name,
+                schema_name=validator.schema_name,
             )
 
-        for entry in self._transforms_before:
-            handler = self._wrap_version_hook(entry.handler, entry.version)
-            handler = self._wrap_channel_hook(handler, entry.channel)
+        for transform in self._transforms_before:
+            handler = self._wrap_version_hook(transform.handler, transform.version)
+            handler = self._wrap_channel_hook(handler, transform.channel)
             event_bus.register(
-                f"pre_{entry.operation}",
+                f"pre_{transform.operation}",
                 handler,
-                schema_name=entry.schema_name,
+                schema_name=transform.schema_name,
             )
 
         # 3. Register post_* hooks: after-transforms
-        for entry in self._transforms_after:
-            handler = self._wrap_version_hook(entry.handler, entry.version)
-            handler = self._wrap_channel_hook(handler, entry.channel)
+        for transform in self._transforms_after:
+            handler = self._wrap_version_hook(transform.handler, transform.version)
+            handler = self._wrap_channel_hook(handler, transform.channel)
             event_bus.register(
-                f"post_{entry.operation}",
+                f"post_{transform.operation}",
                 handler,
-                schema_name=entry.schema_name,
+                schema_name=transform.schema_name,
             )
 
-        # 4. Direct @on hooks
-        for entry in self._on_hooks:
+        # 4. Direct @on hooks (event_name is always set for @on registrations)
+        for hook in self._on_hooks:
+            assert hook.event_name is not None
             event_bus.register(
-                entry.event_name,
-                entry.handler,
-                schema_name=entry.schema_name,
+                hook.event_name,
+                hook.handler,
+                schema_name=hook.schema_name,
             )
 
         # 5. @publish hooks — wire publish entries as post_* handlers
         publish_count = 0
-        for entry in self._publish_entries:
-            for op in entry.operations:
-                handler = self._make_publish_handler(entry, op)
+        for pub in self._publish_entries:
+            for op in pub.operations:
+                handler = self._make_publish_handler(pub, op)
                 event_bus.register(
                     f"post_{op}",
                     handler,
-                    schema_name=entry.schema_name,
+                    schema_name=pub.schema_name,
                 )
                 publish_count += 1
 
@@ -686,9 +683,7 @@ class SlipStreamRegistry:
         return parts[0]
 
     @staticmethod
-    def _wrap_version_hook(
-        handler: EventHandler, version: str | None
-    ) -> EventHandler:
+    def _wrap_version_hook(handler: EventHandler, version: str | None) -> EventHandler:
         """Wrap a hook so it only fires for a specific schema version.
 
         If *version* is ``None``, the handler runs unconditionally.
@@ -704,9 +699,7 @@ class SlipStreamRegistry:
         return versioned_handler
 
     @staticmethod
-    def _wrap_channel_hook(
-        handler: EventHandler, channel: str
-    ) -> EventHandler:
+    def _wrap_channel_hook(handler: EventHandler, channel: str) -> EventHandler:
         """Wrap a hook so it only fires for a specific transport channel.
 
         If *channel* is ``"*"``, the handler runs unconditionally.
@@ -806,9 +799,11 @@ class SlipStreamRegistry:
                         payload["data"] = result
                     elif isinstance(result, list):
                         payload["data"] = [
-                            item.model_dump(mode="json")
-                            if hasattr(item, "model_dump")
-                            else item
+                            (
+                                item.model_dump(mode="json")
+                                if hasattr(item, "model_dump")
+                                else item
+                            )
                             for item in result
                         ]
 
@@ -837,7 +832,5 @@ class SlipStreamRegistry:
                         exc,
                     )
 
-        publish_hook.__qualname__ = (
-            f"publish_{entry.schema_name}_{operation}"
-        )
+        publish_hook.__qualname__ = f"publish_{entry.schema_name}_{operation}"
         return publish_hook

@@ -1,6 +1,5 @@
 """Tests for health and readiness probe endpoints."""
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

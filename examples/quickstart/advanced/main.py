@@ -44,25 +44,25 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from slip_stream import (
-    SlipStream,
-    SlipStreamRegistry,
-    ResponseEnvelopeFilter,
-    FieldProjectionFilter,
+from examples.quickstart.advanced.adapters.pet_enrichment import (
+    BreedApiAdapter,
+    StubPetEnrichmentAdapter,
 )
-
-# Import the business logic registrations
-from examples.quickstart.advanced.services.order_logic import register_order_logic
-from examples.quickstart.advanced.services.pet_logic import register_pet_logic
 
 # Import adapter implementations
 from examples.quickstart.advanced.adapters.shipping import (
     ShipStationAdapter,
     StubShippingAdapter,
 )
-from examples.quickstart.advanced.adapters.pet_enrichment import (
-    BreedApiAdapter,
-    StubPetEnrichmentAdapter,
+
+# Import the business logic registrations
+from examples.quickstart.advanced.services.order_logic import register_order_logic
+from examples.quickstart.advanced.services.pet_logic import register_pet_logic
+from slip_stream import (
+    FieldProjectionFilter,
+    ResponseEnvelopeFilter,
+    SlipStream,
+    SlipStreamRegistry,
 )
 
 SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
@@ -132,11 +132,11 @@ def create_app() -> FastAPI:
         schema_dir=SCHEMAS_DIR,
         api_prefix="/api/v1",
         registry=registry,
-        structured_errors=True,          # RFC 7807 error responses
-        graphql=True,                    # Auto-generated GraphQL API at /graphql
+        structured_errors=True,  # RFC 7807 error responses
+        graphql=True,  # Auto-generated GraphQL API at /graphql
         filters=[
-            ResponseEnvelopeFilter(),    # Wraps in {data, meta} with pagination
-            FieldProjectionFilter(),     # Enables ?fields=name,status
+            ResponseEnvelopeFilter(),  # Wraps in {data, meta} with pagination
+            FieldProjectionFilter(),  # Enables ?fields=name,status
         ],
     )
 

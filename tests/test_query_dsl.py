@@ -19,7 +19,6 @@ from slip_stream.core.query import (
     parse_sort_param,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -186,22 +185,26 @@ class TestExistenceOps:
 class TestLogicOps:
 
     def test_and(self, dsl):
-        result = dsl.to_mongo({
-            "_and": [
-                {"name": {"_eq": "Alice"}},
-                {"age": {"_gt": 18}},
-            ]
-        })
+        result = dsl.to_mongo(
+            {
+                "_and": [
+                    {"name": {"_eq": "Alice"}},
+                    {"age": {"_gt": 18}},
+                ]
+            }
+        )
         assert "$and" in result
         assert len(result["$and"]) == 2
 
     def test_or(self, dsl):
-        result = dsl.to_mongo({
-            "_or": [
-                {"status": {"_eq": "active"}},
-                {"status": {"_eq": "pending"}},
-            ]
-        })
+        result = dsl.to_mongo(
+            {
+                "_or": [
+                    {"status": {"_eq": "active"}},
+                    {"status": {"_eq": "pending"}},
+                ]
+            }
+        )
         assert "$or" in result
         assert len(result["$or"]) == 2
 
@@ -210,17 +213,19 @@ class TestLogicOps:
         assert "$nor" in result
 
     def test_nested_logic(self, dsl):
-        result = dsl.to_mongo({
-            "_and": [
-                {"name": {"_eq": "Alice"}},
-                {
-                    "_or": [
-                        {"age": {"_gt": 18}},
-                        {"status": {"_eq": "admin"}},
-                    ]
-                },
-            ]
-        })
+        result = dsl.to_mongo(
+            {
+                "_and": [
+                    {"name": {"_eq": "Alice"}},
+                    {
+                        "_or": [
+                            {"age": {"_gt": 18}},
+                            {"status": {"_eq": "admin"}},
+                        ]
+                    },
+                ]
+            }
+        )
         assert "$and" in result
         assert "$or" in result["$and"][1]
 

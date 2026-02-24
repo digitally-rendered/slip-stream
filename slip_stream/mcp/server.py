@@ -84,6 +84,7 @@ def create_mcp_server(
         if schema_registry is not None:
             return schema_registry
         from slip_stream.core.schema.registry import SchemaRegistry
+
         return SchemaRegistry()
 
     @server.list_tools()
@@ -330,29 +331,42 @@ def create_mcp_server(
         for name in sorted(reg.get_schema_names()):
             versions = reg.get_all_versions(name)
             latest = reg.get_latest_version(name)
-            result.append({
-                "name": name,
-                "versions": versions,
-                "latest_version": latest,
-            })
-        return [TextContent(
-            type="text",
-            text=json.dumps({"schemas": result}, indent=2),
-        )]
+            result.append(
+                {
+                    "name": name,
+                    "versions": versions,
+                    "latest_version": latest,
+                }
+            )
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"schemas": result}, indent=2),
+            )
+        ]
 
     async def _handle_get_schema(args: dict) -> list[TextContent]:
         reg = _get_registry()
         name = args["name"]
         version = args.get("version", "latest")
         schema = reg.get_schema(name, version)
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "name": name,
-                "version": version if version != "latest" else reg.get_latest_version(name),
-                "schema": schema,
-            }, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "name": name,
+                        "version": (
+                            version
+                            if version != "latest"
+                            else reg.get_latest_version(name)
+                        ),
+                        "schema": schema,
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
     async def _handle_get_schema_dag() -> list[TextContent]:
         reg = _get_registry()
@@ -362,29 +376,38 @@ def create_mcp_server(
             latest = reg.get_latest_version(name)
             schema = reg.get_schema(name, latest)
             deps = _extract_refs_from_schema(schema)
-            dag.append({
-                "name": name,
-                "versions": versions,
-                "latest_version": latest,
-                "dependencies": deps,
-            })
-        return [TextContent(
-            type="text",
-            text=json.dumps({"dag": dag}, indent=2),
-        )]
+            dag.append(
+                {
+                    "name": name,
+                    "versions": versions,
+                    "latest_version": latest,
+                    "dependencies": deps,
+                }
+            )
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"dag": dag}, indent=2),
+            )
+        ]
 
     async def _handle_list_versions(args: dict) -> list[TextContent]:
         reg = _get_registry()
         name = args["name"]
         versions = reg.get_all_versions(name)
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "name": name,
-                "versions": versions,
-                "latest_version": reg.get_latest_version(name),
-            }, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "name": name,
+                        "versions": versions,
+                        "latest_version": reg.get_latest_version(name),
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
     async def _handle_describe_entity(args: dict) -> list[TextContent]:
         reg = _get_registry()
@@ -395,55 +418,73 @@ def create_mcp_server(
         required = schema.get("required", [])
 
         audit_fields = {
-            "id", "entity_id", "schema_version", "record_version",
-            "created_at", "updated_at", "deleted_at",
-            "created_by", "updated_by", "deleted_by",
+            "id",
+            "entity_id",
+            "schema_version",
+            "record_version",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "created_by",
+            "updated_by",
+            "deleted_by",
         }
 
         fields = []
         for field_name, field_def in properties.items():
-            fields.append({
-                "name": field_name,
-                "type": field_def.get("type", "any"),
-                "format": field_def.get("format"),
-                "required": field_name in required,
-                "default": field_def.get("default"),
-                "is_audit_field": field_name in audit_fields,
-            })
+            fields.append(
+                {
+                    "name": field_name,
+                    "type": field_def.get("type", "any"),
+                    "format": field_def.get("format"),
+                    "required": field_name in required,
+                    "default": field_def.get("default"),
+                    "is_audit_field": field_name in audit_fields,
+                }
+            )
 
         resolved_version = version
         if version == "latest":
             resolved_version = reg.get_latest_version(name)
 
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "name": name,
-                "version": resolved_version,
-                "field_count": len(fields),
-                "user_fields": len([f for f in fields if not f["is_audit_field"]]),
-                "fields": fields,
-                "api_endpoints": {
-                    "rest": {
-                        "list": f"GET {base_url}{api_prefix}/{name.replace('_', '-')}/",
-                        "get": f"GET {base_url}{api_prefix}/{name.replace('_', '-')}/{{entity_id}}",
-                        "create": f"POST {base_url}{api_prefix}/{name.replace('_', '-')}/",
-                        "update": f"PATCH {base_url}{api_prefix}/{name.replace('_', '-')}/{{entity_id}}",
-                        "delete": f"DELETE {base_url}{api_prefix}/{name.replace('_', '-')}/{{entity_id}}",
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "name": name,
+                        "version": resolved_version,
+                        "field_count": len(fields),
+                        "user_fields": len(
+                            [f for f in fields if not f["is_audit_field"]]
+                        ),
+                        "fields": fields,
+                        "api_endpoints": {
+                            "rest": {
+                                "list": f"GET {base_url}{api_prefix}/{name.replace('_', '-')}/",
+                                "get": f"GET {base_url}{api_prefix}/{name.replace('_', '-')}/{{entity_id}}",
+                                "create": f"POST {base_url}{api_prefix}/{name.replace('_', '-')}/",
+                                "update": f"PATCH {base_url}{api_prefix}/{name.replace('_', '-')}/{{entity_id}}",
+                                "delete": f"DELETE {base_url}{api_prefix}/{name.replace('_', '-')}/{{entity_id}}",
+                            },
+                            "schema": f"GET {base_url}{schema_prefix}/{name}/{resolved_version}",
+                        },
                     },
-                    "schema": f"GET {base_url}{schema_prefix}/{name}/{resolved_version}",
-                },
-            }, indent=2),
-        )]
+                    indent=2,
+                ),
+            )
+        ]
 
     async def _handle_query_rest(args: dict) -> list[TextContent]:
         try:
             import httpx
         except ImportError:
-            return [TextContent(
-                type="text",
-                text="Error: httpx required for REST queries. Install with: pip install httpx",
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: httpx required for REST queries. Install with: pip install httpx",
+                )
+            ]
 
         method = args.get("method", "GET")
         path = args["path"]
@@ -473,19 +514,23 @@ def create_mcp_server(
         except Exception:
             text = resp.text
 
-        return [TextContent(
-            type="text",
-            text=f"HTTP {resp.status_code}\n\n{text}",
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=f"HTTP {resp.status_code}\n\n{text}",
+            )
+        ]
 
     async def _handle_query_graphql(args: dict) -> list[TextContent]:
         try:
             import httpx
         except ImportError:
-            return [TextContent(
-                type="text",
-                text="Error: httpx required for GraphQL queries. Install with: pip install httpx",
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: httpx required for GraphQL queries. Install with: pip install httpx",
+                )
+            ]
 
         query = args["query"]
         variables = args.get("variables", {})
@@ -503,19 +548,24 @@ def create_mcp_server(
         except Exception:
             text = resp.text
 
-        return [TextContent(
-            type="text",
-            text=text,
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=text,
+            )
+        ]
 
     async def _handle_create_schema(args: dict) -> list[TextContent]:
         if schema_dir is None:
-            return [TextContent(
-                type="text",
-                text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
+                )
+            ]
 
         from pathlib import Path
+
         from slip_stream.schema_utils import create_schema_file, snake_case
 
         schemas_path = Path(schema_dir)
@@ -528,30 +578,43 @@ def create_mcp_server(
             return [TextContent(type="text", text=f"Error: {e}")]
 
         snake = snake_case(name)
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "created": str(target),
-                "schema_name": snake,
-                "endpoint": f"{api_prefix}/{snake.replace('_', '-')}/",
-            }, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "created": str(target),
+                        "schema_name": snake,
+                        "endpoint": f"{api_prefix}/{snake.replace('_', '-')}/",
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
     async def _handle_validate_schemas() -> list[TextContent]:
         if schema_dir is None:
-            return [TextContent(
-                type="text",
-                text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
+                )
+            ]
 
         from pathlib import Path
+
         from slip_stream.schema_utils import validate_all_schemas
 
         schemas_path = Path(schema_dir)
         results = validate_all_schemas(schemas_path)
 
         if not results:
-            return [TextContent(type="text", text=json.dumps({"schemas": [], "valid": True}, indent=2))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps({"schemas": [], "valid": True}, indent=2),
+                )
+            ]
 
         output = []
         all_valid = True
@@ -562,23 +625,31 @@ def create_mcp_server(
                 all_valid = False
             output.append(entry)
 
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "schemas": output,
-                "total": len(output),
-                "valid": all_valid,
-            }, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "schemas": output,
+                        "total": len(output),
+                        "valid": all_valid,
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
     async def _handle_generate_sdk(args: dict) -> list[TextContent]:
         if schema_dir is None:
-            return [TextContent(
-                type="text",
-                text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: schema_dir not configured. Pass --schema-dir when starting the MCP server.",
+                )
+            ]
 
         from pathlib import Path
+
         from slip_stream.sdk_generator import generate_sdk
 
         schemas_path = Path(schema_dir)
@@ -598,14 +669,19 @@ def create_mcp_server(
         output_path = args.get("output_path")
         if output_path:
             Path(output_path).write_text(code)
-            return [TextContent(
-                type="text",
-                text=json.dumps({
-                    "written_to": output_path,
-                    "schemas": list(schemas.keys()),
-                    "lines": len(code.splitlines()),
-                }, indent=2),
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "written_to": output_path,
+                            "schemas": list(schemas.keys()),
+                            "lines": len(code.splitlines()),
+                        },
+                        indent=2,
+                    ),
+                )
+            ]
 
         return [TextContent(type="text", text=code)]
 
@@ -613,10 +689,12 @@ def create_mcp_server(
         try:
             import httpx
         except ImportError:
-            return [TextContent(
-                type="text",
-                text="Error: httpx required for topology queries. Install with: pip install httpx",
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: httpx required for topology queries. Install with: pip install httpx",
+                )
+            ]
 
         url = f"{base_url}/_topology"
         async with httpx.AsyncClient() as client:
@@ -628,17 +706,21 @@ def create_mcp_server(
         except Exception:
             text = resp.text
 
-        return [TextContent(
-            type="text",
-            text=f"HTTP {resp.status_code}\n\n{text}" if resp.status_code != 200 else text,
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=(
+                    f"HTTP {resp.status_code}\n\n{text}"
+                    if resp.status_code != 200
+                    else text
+                ),
+            )
+        ]
 
     return server
 
 
-def _extract_refs_from_schema(
-    schema: Any, seen: set | None = None
-) -> list[str]:
+def _extract_refs_from_schema(schema: Any, seen: set | None = None) -> list[str]:
     """Extract $ref dependencies from a schema."""
     if seen is None:
         seen = set()
@@ -677,7 +759,9 @@ async def main() -> None:
     registry = None
     if args.schema_dir:
         from pathlib import Path
+
         from slip_stream.core.schema.registry import SchemaRegistry
+
         registry = SchemaRegistry(schema_dir=Path(args.schema_dir))
 
     server = create_mcp_server(
@@ -689,9 +773,12 @@ async def main() -> None:
     )
 
     async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream)
+        await server.run(
+            read_stream, write_stream, server.create_initialization_options()
+        )
 
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())

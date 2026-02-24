@@ -55,7 +55,12 @@ class MongoSchemaStorage:
             name="name_version_unique",
         )
         await self._collection.create_index(
-            [("name", 1), ("version_major", -1), ("version_minor", -1), ("version_patch", -1)],
+            [
+                ("name", 1),
+                ("version_major", -1),
+                ("version_minor", -1),
+                ("version_patch", -1),
+            ],
             name="name_version_sort",
         )
 
@@ -100,14 +105,20 @@ class MongoSchemaStorage:
 
     async def load_latest(self, name: str) -> tuple[str, dict[str, Any]] | None:
         """Load the latest version using decomposed version fields for sorting."""
-        cursor = self._collection.find(
-            {"name": name},
-            {"_id": 0, "version": 1, "schema": 1},
-        ).sort([
-            ("version_major", -1),
-            ("version_minor", -1),
-            ("version_patch", -1),
-        ]).limit(1)
+        cursor = (
+            self._collection.find(
+                {"name": name},
+                {"_id": 0, "version": 1, "schema": 1},
+            )
+            .sort(
+                [
+                    ("version_major", -1),
+                    ("version_minor", -1),
+                    ("version_patch", -1),
+                ]
+            )
+            .limit(1)
+        )
 
         doc = await cursor.to_list(length=1)
         if not doc:

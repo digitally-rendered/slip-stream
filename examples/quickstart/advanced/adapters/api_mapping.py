@@ -265,7 +265,9 @@ class MappedApiAdapter:
         for local_field, remote_path in mapping.field_map.items():
             value = local_data.get(local_field)
             if value is not None:
-                _set_nested(payload, remote_path, str(value) if hasattr(value, 'hex') else value)
+                _set_nested(
+                    payload, remote_path, str(value) if hasattr(value, "hex") else value
+                )
 
         # Apply constants
         for remote_path, value in mapping.constants.items():
@@ -303,9 +305,7 @@ class MappedApiAdapter:
                 if value is not None:
                     params[param_name] = str(value)
 
-            response = await self._client.get(
-                mapping.remote_resource, params=params
-            )
+            response = await self._client.get(mapping.remote_resource, params=params)
         else:
             payload = self.translate_outbound(mapping, local_data)
             response = await self._client.request(

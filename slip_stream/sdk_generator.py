@@ -20,10 +20,7 @@ and ``pydantic``.
 
 from __future__ import annotations
 
-import json
-import textwrap
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # JSON Schema → Python type mapping
@@ -38,11 +35,21 @@ _TYPE_MAP = {
     "object": "dict",
 }
 
-_AUDIT_FIELDS = frozenset({
-    "id", "_id", "entity_id", "schema_version", "record_version",
-    "created_at", "updated_at", "deleted_at",
-    "created_by", "updated_by", "deleted_by",
-})
+_AUDIT_FIELDS = frozenset(
+    {
+        "id",
+        "_id",
+        "entity_id",
+        "schema_version",
+        "record_version",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by",
+        "updated_by",
+        "deleted_by",
+    }
+)
 
 
 def _python_type(prop: dict[str, Any]) -> str:
@@ -125,9 +132,7 @@ def generate_sdk(
         parts.append("    deleted_by: Optional[str] = None")
 
         # User-defined properties
-        user_props = {
-            k: v for k, v in properties.items() if k not in _AUDIT_FIELDS
-        }
+        user_props = {k: v for k, v in properties.items() if k not in _AUDIT_FIELDS}
         for prop_name, prop_def in sorted(user_props.items()):
             py_type = _python_type(prop_def)
             desc = prop_def.get("description", "")
@@ -160,7 +165,9 @@ def generate_sdk(
                 parts.append(f"    {prop_name}: {py_type}")
             else:
                 if default is not None:
-                    parts.append(f"    {prop_name}: Optional[{py_type}] = {repr(default)}")
+                    parts.append(
+                        f"    {prop_name}: Optional[{py_type}] = {repr(default)}"
+                    )
                 else:
                     parts.append(f"    {prop_name}: Optional[{py_type}] = None")
         if not user_props:
@@ -225,7 +232,9 @@ def _generate_client_methods(schema_name: str, pascal: str) -> str:
     lines.append(f"        self, data: {pascal}Create")
     lines.append(f"    ) -> {pascal}:")
     lines.append(f'        """Create a new {pascal}."""')
-    lines.append(f'        resp = await self._client.post("/{schema_name}/", json=data.model_dump(exclude_unset=True))')
+    lines.append(
+        f'        resp = await self._client.post("/{schema_name}/", json=data.model_dump(exclude_unset=True))'
+    )
     lines.append(f"        resp.raise_for_status()")
     lines.append(f"        return {pascal}.model_validate(resp.json())")
     lines.append("")
@@ -235,7 +244,9 @@ def _generate_client_methods(schema_name: str, pascal: str) -> str:
     lines.append(f"        self, entity_id: str | UUID")
     lines.append(f"    ) -> {pascal}:")
     lines.append(f'        """Get a {pascal} by entity_id."""')
-    lines.append(f'        resp = await self._client.get(f"/{schema_name}/{{entity_id}}")')
+    lines.append(
+        f'        resp = await self._client.get(f"/{schema_name}/{{entity_id}}")'
+    )
     lines.append(f"        resp.raise_for_status()")
     lines.append(f"        return {pascal}.model_validate(resp.json())")
     lines.append("")
@@ -253,9 +264,13 @@ def _generate_client_methods(schema_name: str, pascal: str) -> str:
     lines.append(f"            params['where'] = json.dumps(where)")
     lines.append(f"        if sort:")
     lines.append(f"            params['sort'] = sort")
-    lines.append(f'        resp = await self._client.get("/{schema_name}/", params=params)')
+    lines.append(
+        f'        resp = await self._client.get("/{schema_name}/", params=params)'
+    )
     lines.append(f"        resp.raise_for_status()")
-    lines.append(f"        return [{pascal}.model_validate(item) for item in resp.json()]")
+    lines.append(
+        f"        return [{pascal}.model_validate(item) for item in resp.json()]"
+    )
     lines.append("")
 
     # update
@@ -263,7 +278,9 @@ def _generate_client_methods(schema_name: str, pascal: str) -> str:
     lines.append(f"        self, entity_id: str | UUID, data: {pascal}Update")
     lines.append(f"    ) -> {pascal}:")
     lines.append(f'        """Update a {pascal}."""')
-    lines.append(f'        resp = await self._client.patch(f"/{schema_name}/{{entity_id}}", json=data.model_dump(exclude_unset=True))')
+    lines.append(
+        f'        resp = await self._client.patch(f"/{schema_name}/{{entity_id}}", json=data.model_dump(exclude_unset=True))'
+    )
     lines.append(f"        resp.raise_for_status()")
     lines.append(f"        return {pascal}.model_validate(resp.json())")
     lines.append("")
@@ -273,7 +290,9 @@ def _generate_client_methods(schema_name: str, pascal: str) -> str:
     lines.append(f"        self, entity_id: str | UUID")
     lines.append(f"    ) -> {pascal}:")
     lines.append(f'        """Delete a {pascal}."""')
-    lines.append(f'        resp = await self._client.delete(f"/{schema_name}/{{entity_id}}")')
+    lines.append(
+        f'        resp = await self._client.delete(f"/{schema_name}/{{entity_id}}")'
+    )
     lines.append(f"        resp.raise_for_status()")
     lines.append(f"        return {pascal}.model_validate(resp.json())")
     lines.append("")

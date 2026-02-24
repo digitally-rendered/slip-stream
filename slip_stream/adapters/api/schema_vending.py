@@ -21,7 +21,6 @@ from pydantic import BaseModel, Field
 
 from slip_stream.core.schema.registry import SchemaRegistry
 
-
 # ------------------------------------------------------------------
 # Response models
 # ------------------------------------------------------------------

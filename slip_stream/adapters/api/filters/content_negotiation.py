@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -105,15 +105,11 @@ class ContentNegotiationFilter(FilterBase):
 
     order: int = 50
 
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         content_type = _parse_media_type(
             request.headers.get("content-type", "application/json")
         )
-        accept = _parse_media_type(
-            request.headers.get("accept", "application/json")
-        )
+        accept = _parse_media_type(request.headers.get("accept", "application/json"))
 
         context.content_type = content_type
         context.accept = accept

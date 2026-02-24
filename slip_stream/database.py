@@ -49,22 +49,30 @@ class DatabaseManager:
         self.mongo_uri = mongo_uri or os.getenv(
             "MONGO_URI", "mongodb://localhost:27017"
         )
-        self.database_name = database_name or os.getenv(
-            "DATABASE_NAME", "slip_stream_db"
+        self.database_name: str = (
+            database_name or os.getenv("DATABASE_NAME") or "slip_stream_db"
         )
         self.client: Optional[AsyncIOMotorClient] = None
         self.db: Optional[AsyncIOMotorDatabase] = None
 
     async def connect(self) -> None:
         """Establish a connection to MongoDB and verify with a ping."""
-        logger.info("Connecting to MongoDB at %s (database: %s)", self.mongo_uri, self.database_name)
+        logger.info(
+            "Connecting to MongoDB at %s (database: %s)",
+            self.mongo_uri,
+            self.database_name,
+        )
         self.client = AsyncIOMotorClient(self.mongo_uri)
         self.db = self.client[self.database_name]
         try:
             await self.db.command("ping")
             logger.info("MongoDB connection verified (ping OK)")
         except PyMongoError:
-            logger.error("MongoDB connection failed — ping to %s/%s failed", self.mongo_uri, self.database_name)
+            logger.error(
+                "MongoDB connection failed — ping to %s/%s failed",
+                self.mongo_uri,
+                self.database_name,
+            )
             self.client.close()
             self.client = None
             self.db = None
@@ -87,7 +95,9 @@ class DatabaseManager:
             RuntimeError: If ``connect()`` has not been called.
         """
         if self.db is None:
-            logger.error("get_database() called before connect() — database not initialized")
+            logger.error(
+                "get_database() called before connect() — database not initialized"
+            )
             raise RuntimeError(
                 "Database not initialized. Call connect() during application startup."
             )

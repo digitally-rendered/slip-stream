@@ -32,14 +32,11 @@ import sys
 from datetime import datetime, timezone
 from typing import Literal
 
-
 # ---------------------------------------------------------------------------
 # Standard format strings
 # ---------------------------------------------------------------------------
 
-DEFAULT_FORMAT = (
-    "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s"
-)
+DEFAULT_FORMAT = "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s"
 """Default human-readable log format."""
 
 VERBOSE_FORMAT = (
@@ -72,7 +69,7 @@ class JSONFormatter(logging.Formatter):
         if record.funcName and record.funcName != "<module>":
             entry["function"] = record.funcName
         if record.lineno:
-            entry["line"] = record.lineno
+            entry["line"] = str(record.lineno)
         if record.exc_info and record.exc_info[1]:
             entry["exception"] = self.formatException(record.exc_info)
         return json.dumps(entry, default=str)
@@ -120,4 +117,8 @@ def configure_logging(
     handler.setFormatter(formatter)
 
     root.addHandler(handler)
-    root.setLevel(level if isinstance(level, int) else getattr(logging, level.upper(), logging.INFO))
+    root.setLevel(
+        level
+        if isinstance(level, int)
+        else getattr(logging, level.upper(), logging.INFO)
+    )

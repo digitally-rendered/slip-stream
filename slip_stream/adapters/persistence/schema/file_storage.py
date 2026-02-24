@@ -21,13 +21,12 @@ the same schema name appears in both.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 from pathlib import Path
 from typing import Any
 
-from slip_stream.core.schema.versioning import sort_versions, latest_version
+from slip_stream.core.schema.versioning import latest_version, sort_versions
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -40,9 +40,7 @@ class SchemaVersionFilter(FilterBase):
 
     order: int = 5
 
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         """Extract schema version from request header."""
         version = request.headers.get("x-schema-version")
         if version:
@@ -81,18 +79,16 @@ class SchemaVersionFilter(FilterBase):
 
         allowed_fields = set(schema.get("properties", {}).keys())
 
+        projected: Any
         if isinstance(data, list):
-            projected = [
-                self._project_item(item, allowed_fields) for item in data
-            ]
+            projected = [self._project_item(item, allowed_fields) for item in data]
         elif isinstance(data, dict):
             # Could be an envelope {"data": ...} or a bare object
             if "data" in data and "meta" in data:
                 inner = data["data"]
                 if isinstance(inner, list):
                     data["data"] = [
-                        self._project_item(item, allowed_fields)
-                        for item in inner
+                        self._project_item(item, allowed_fields) for item in inner
                     ]
                 elif isinstance(inner, dict):
                     data["data"] = self._project_item(inner, allowed_fields)
@@ -154,4 +150,3 @@ class SchemaVersionFilter(FilterBase):
             return parts[0].replace("-", "_")
 
         return None
-

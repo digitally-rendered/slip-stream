@@ -53,8 +53,14 @@ class AuditEntry:
     """
 
     __slots__ = (
-        "timestamp", "operation", "schema_name", "entity_id",
-        "user_id", "channel", "changes", "metadata",
+        "timestamp",
+        "operation",
+        "schema_name",
+        "entity_id",
+        "user_id",
+        "channel",
+        "changes",
+        "metadata",
     )
 
     def __init__(
@@ -182,7 +188,10 @@ class AuditTrail:
 
         logger.debug(
             "Audit: %s %s/%s by %s",
-            operation, schema_name, entity_id, user_id,
+            operation,
+            schema_name,
+            entity_id,
+            user_id,
         )
         return entry
 
@@ -206,7 +215,8 @@ class AuditTrail:
         """
         if self.in_memory:
             results = [
-                e for e in self._entries
+                e
+                for e in self._entries
                 if e["entity_id"] == str(entity_id)
                 and (schema_name is None or e["schema_name"] == schema_name)
             ]
@@ -245,9 +255,12 @@ class AuditTrail:
         if db is None:
             return []
 
-        cursor = db[self.collection_name].find(
-            {"user_id": user_id}
-        ).sort("timestamp", -1).limit(limit)
+        cursor = (
+            db[self.collection_name]
+            .find({"user_id": user_id})
+            .sort("timestamp", -1)
+            .limit(limit)
+        )
         return [doc async for doc in cursor]
 
     # ------------------------------------------------------------------

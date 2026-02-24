@@ -10,8 +10,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List
-
+from typing import Dict, List
 
 # ---------------------------------------------------------------------------
 # Schema template — the canonical JSON Schema skeleton for new entities
@@ -49,6 +48,7 @@ SCHEMA_TEMPLATE = """\
 # Name helpers
 # ---------------------------------------------------------------------------
 
+
 def snake_case(name: str) -> str:
     """Normalise a name to snake_case for file/schema naming."""
     s = re.sub(r"[^a-zA-Z0-9]", "_", name)
@@ -65,6 +65,7 @@ def title_case(snake: str) -> str:
 # ---------------------------------------------------------------------------
 # Schema file operations
 # ---------------------------------------------------------------------------
+
 
 def create_schema_file(
     schemas_dir: Path,

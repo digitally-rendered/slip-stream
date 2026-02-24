@@ -25,18 +25,20 @@ CreateModelType = TypeVar("CreateModelType", bound=BaseModel)
 UpdateModelType = TypeVar("UpdateModelType", bound=BaseModel)
 
 # Fields managed by BaseDocument — skipped during model generation
-_AUDIT_FIELDS = frozenset({
-    "id",
-    "entity_id",
-    "schema_version",
-    "record_version",
-    "created_at",
-    "updated_at",
-    "deleted_at",
-    "created_by",
-    "updated_by",
-    "deleted_by",
-})
+_AUDIT_FIELDS = frozenset(
+    {
+        "id",
+        "entity_id",
+        "schema_version",
+        "record_version",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by",
+        "updated_by",
+        "deleted_by",
+    }
+)
 
 
 class SchemaRegistry:

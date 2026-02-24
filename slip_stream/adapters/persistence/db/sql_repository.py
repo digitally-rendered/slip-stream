@@ -31,24 +31,22 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
 try:
     import sqlalchemy as sa
     from sqlalchemy import (
+        Boolean,
         Column,
         DateTime,
         Float,
         Integer,
-        MetaData,
         String,
         Table,
         Text,
-        Boolean,
     )
-    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
     from sqlalchemy.ext.asyncio import AsyncSession
 
     HAS_SQLALCHEMY = True
@@ -71,11 +69,20 @@ if HAS_SQLALCHEMY:
     }
 
 # Audit fields managed by the framework (always present)
-_AUDIT_FIELD_NAMES = frozenset({
-    "id", "entity_id", "schema_version", "record_version",
-    "created_at", "updated_at", "deleted_at",
-    "created_by", "updated_by", "deleted_by",
-})
+_AUDIT_FIELD_NAMES = frozenset(
+    {
+        "id",
+        "entity_id",
+        "schema_version",
+        "record_version",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by",
+        "updated_by",
+        "deleted_by",
+    }
+)
 
 
 def build_table_from_schema(
@@ -254,18 +261,20 @@ class SQLRepository:
             row_data.pop(f, None)
         row_data.pop("_id", None)
 
-        row_data.update({
-            "id": str(uuid.uuid4()),
-            "entity_id": str(eid),
-            "schema_version": "1.0.0",
-            "record_version": 1,
-            "created_at": now,
-            "updated_at": now,
-            "deleted_at": None,
-            "created_by": user_id,
-            "updated_by": user_id,
-            "deleted_by": None,
-        })
+        row_data.update(
+            {
+                "id": str(uuid.uuid4()),
+                "entity_id": str(eid),
+                "schema_version": "1.0.0",
+                "record_version": 1,
+                "created_at": now,
+                "updated_at": now,
+                "deleted_at": None,
+                "created_by": user_id,
+                "updated_by": user_id,
+                "deleted_by": None,
+            }
+        )
 
         # Serialise complex types
         row_data = self._serialise_complex(row_data)
@@ -364,9 +373,7 @@ class SQLRepository:
         if filter_criteria:
             for field_name, value in filter_criteria.items():
                 if hasattr(self._table.c, field_name):
-                    query = query.where(
-                        getattr(self._table.c, field_name) == value
-                    )
+                    query = query.where(getattr(self._table.c, field_name) == value)
 
         # Sorting
         sort_col = getattr(self._table.c, sort_by, self._table.c.created_at)
@@ -410,9 +417,7 @@ class SQLRepository:
         if filter_criteria:
             for field_name, value in filter_criteria.items():
                 if hasattr(self._table.c, field_name):
-                    query = query.where(
-                        getattr(self._table.c, field_name) == value
-                    )
+                    query = query.where(getattr(self._table.c, field_name) == value)
 
         result = await self._session.execute(query)
         return result.scalar() or 0

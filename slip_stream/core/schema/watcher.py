@@ -48,7 +48,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
@@ -71,7 +70,9 @@ def _file_fingerprint(path: Path) -> tuple[float, int]:
         return (-1, -1)
 
 
-def _load_schema_from_file(path: Path, schema_dir: Path) -> tuple[str, str, Dict[str, Any]] | None:
+def _load_schema_from_file(
+    path: Path, schema_dir: Path
+) -> tuple[str, str, Dict[str, Any]] | None:
     """Read, parse, and $ref-resolve a schema file.
 
     Returns ``(schema_name, version, schema_dict)`` on success, or ``None``
@@ -307,12 +308,12 @@ class SchemaWatcher:
             registry_schemas[name] = {}
         registry_schemas[name][version] = schema
 
-        logger.info("SchemaWatcher: reloaded schema '%s' v%s from %s", name, version, path)
+        logger.info(
+            "SchemaWatcher: reloaded schema '%s' v%s from %s", name, version, path
+        )
 
         if self._on_reload is not None:
-            asyncio.get_running_loop().create_task(
-                self._on_reload(name, version, schema),
-            )
+            asyncio.ensure_future(self._on_reload(name, version, schema))
 
     def _handle_delete(self, path: Path) -> None:
         """Remove a deleted schema from the registry."""
@@ -322,7 +323,9 @@ class SchemaWatcher:
             self._evict_model_cache(name)
             logger.info("SchemaWatcher: removed schema '%s' (file deleted)", name)
         else:
-            logger.debug("SchemaWatcher: deleted file %s had no registered schema", path)
+            logger.debug(
+                "SchemaWatcher: deleted file %s had no registered schema", path
+            )
 
     def _evict_model_cache(self, name: str) -> None:
         """Remove all cached model triples for *name* from the registry cache.

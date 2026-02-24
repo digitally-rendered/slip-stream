@@ -1,12 +1,10 @@
 """Tests for FilterChainMiddleware (ASGI integration)."""
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from slip_stream.adapters.api.filters.base import (
     FilterBase,
-    FilterContext,
     FilterShortCircuit,
 )
 from slip_stream.adapters.api.filters.chain import FilterChain

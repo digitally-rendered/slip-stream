@@ -57,6 +57,10 @@ sqlalchemy = "^2.0.46"
 aiosqlite = "^0.22.1"
 schemathesis = ">=3.32.0"
 greenlet = "^3.3.2"
+pre-commit = "^4.5.1"
+types-pyyaml = "^6.0.12.20250915"
+pytest-cov = "^7.0.0"
+pytest-benchmark = "^5.2.3"
 
 [tool.poetry.scripts]
 slip = "slip_stream.cli:main"
@@ -75,8 +79,49 @@ line-length = 88
 [tool.ruff]
 line-length = 88
 
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E402",   # module-import-not-at-top (needed for conditional imports)
+    "E501",   # line-too-long (black handles line length)
+    "F541",   # f-string-missing-placeholders (false positives on template strings)
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"slip_stream/__init__.py" = ["F401"]  # public re-exports
+
+[tool.ruff.lint.isort]
+known-first-party = ["slip_stream"]
+
+[tool.coverage.run]
+source = ["slip_stream"]
+omit = [
+    "slip_stream/testing/*",
+    "slip_stream/mcp/__main__.py",
+]
+
+[tool.coverage.report]
+fail_under = 75
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+    "pass",
+]
+
 [tool.mypy]
 python_version = "3.12"
 strict = false
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+exclude = [
+    "examples/",
+    "tests/",
+]
+

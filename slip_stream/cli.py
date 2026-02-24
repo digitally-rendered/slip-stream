@@ -14,26 +14,27 @@ Requires no external CLI libraries — uses only the stdlib ``argparse``.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
-import os
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 from typing import Sequence
-
 
 # ---------------------------------------------------------------------------
 # Shared utilities (re-exported from schema_utils for CLI use)
 # ---------------------------------------------------------------------------
-
 from slip_stream.schema_utils import (
     SCHEMA_TEMPLATE as _SCHEMA_TEMPLATE,
+)
+from slip_stream.schema_utils import (
     create_schema_file,
-    snake_case as _snake_case,
-    title_case as _title_case,
     validate_all_schemas,
+)
+from slip_stream.schema_utils import (
+    snake_case as _snake_case,
+)
+from slip_stream.schema_utils import (
+    title_case as _title_case,
 )
 
 _MAIN_TEMPLATE = '''\
@@ -204,9 +205,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     # Write .env
     env_file = project_dir / ".env"
-    env_file.write_text(
-        _ENV_TEMPLATE.format(db_name=_snake_case(project_name) + "_db")
-    )
+    env_file.write_text(_ENV_TEMPLATE.format(db_name=_snake_case(project_name) + "_db"))
     print(f"  Created {env_file}")
 
     # Write a sample schema
@@ -241,7 +240,10 @@ def cmd_schema_add(args: argparse.Namespace) -> int:
     """Add a new JSON Schema file."""
     root = _find_project_root()
     if root is None:
-        print("Error: cannot find project root (no schemas/ directory found).", file=sys.stderr)
+        print(
+            "Error: cannot find project root (no schemas/ directory found).",
+            file=sys.stderr,
+        )
         return 1
 
     try:
@@ -260,7 +262,10 @@ def cmd_schema_list(args: argparse.Namespace) -> int:
     """List schemas discovered in the project."""
     root = _find_project_root()
     if root is None:
-        print("Error: cannot find project root (no schemas/ directory found).", file=sys.stderr)
+        print(
+            "Error: cannot find project root (no schemas/ directory found).",
+            file=sys.stderr,
+        )
         return 1
 
     schemas_dir = root / "schemas"
@@ -287,7 +292,10 @@ def cmd_schema_validate(args: argparse.Namespace) -> int:
     """Validate all schemas in the project."""
     root = _find_project_root()
     if root is None:
-        print("Error: cannot find project root (no schemas/ directory found).", file=sys.stderr)
+        print(
+            "Error: cannot find project root (no schemas/ directory found).",
+            file=sys.stderr,
+        )
         return 1
 
     schemas_dir = root / "schemas"
@@ -322,7 +330,10 @@ def cmd_schema_test(args: argparse.Namespace) -> int:
     """Run schemathesis property-based tests against all schemas."""
     root = _find_project_root()
     if root is None:
-        print("Error: cannot find project root (no schemas/ directory found).", file=sys.stderr)
+        print(
+            "Error: cannot find project root (no schemas/ directory found).",
+            file=sys.stderr,
+        )
         return 1
 
     try:
@@ -375,7 +386,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     """Start the development server."""
     root = _find_project_root()
     if root is None:
-        print("Error: cannot find project root (no schemas/ directory found).", file=sys.stderr)
+        print(
+            "Error: cannot find project root (no schemas/ directory found).",
+            file=sys.stderr,
+        )
         return 1
 
     app_module = args.app or "main:app"
@@ -383,12 +397,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     port = str(args.port or 8000)
 
     cmd = [
-        sys.executable, "-m", "uvicorn",
+        sys.executable,
+        "-m",
+        "uvicorn",
         app_module,
-        "--host", host,
-        "--port", port,
+        "--host",
+        host,
+        "--port",
+        port,
         "--reload",
-        "--reload-dir", str(root),
+        "--reload-dir",
+        str(root),
     ]
 
     print(f"Starting slip-stream dev server...")

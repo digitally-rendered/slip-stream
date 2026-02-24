@@ -33,9 +33,7 @@ def registry(schema_dir):
 def client(registry):
     """TestClient with schema vending router mounted."""
     app = FastAPI()
-    router = create_schema_vending_router(
-        schema_registry=registry, prefix="/schemas"
-    )
+    router = create_schema_vending_router(schema_registry=registry, prefix="/schemas")
     app.include_router(router)
     return TestClient(app)
 
@@ -62,7 +60,8 @@ class TestSchemaVendingAPI:
         if "gadget" not in registry._schemas:
             registry._schemas["gadget"] = {}
         registry._schemas["gadget"]["2.0.0"] = {
-            "type": "object", "version": "2.0.0",
+            "type": "object",
+            "version": "2.0.0",
             "properties": {"label": {"type": "string"}, "extra": {"type": "string"}},
         }
         resp = client.get("/schemas/gadget")

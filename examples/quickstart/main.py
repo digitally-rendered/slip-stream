@@ -23,7 +23,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from slip_stream import SlipStream, ResponseEnvelopeFilter, FieldProjectionFilter
+from slip_stream import FieldProjectionFilter, ResponseEnvelopeFilter, SlipStream
 
 SCHEMAS_DIR = Path(__file__).parent / "schemas"
 
@@ -34,10 +34,10 @@ def create_app() -> FastAPI:
         app=FastAPI(),  # placeholder, replaced below
         schema_dir=SCHEMAS_DIR,
         api_prefix="/api/v1",
-        structured_errors=True,          # RFC 7807 error responses
+        structured_errors=True,  # RFC 7807 error responses
         filters=[
-            ResponseEnvelopeFilter(),    # Wraps in {data, meta} with pagination
-            FieldProjectionFilter(),     # Enables ?fields=name,status
+            ResponseEnvelopeFilter(),  # Wraps in {data, meta} with pagination
+            FieldProjectionFilter(),  # Enables ?fields=name,status
         ],
     )
 

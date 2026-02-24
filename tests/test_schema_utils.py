@@ -68,7 +68,9 @@ class TestValidateSchemaFile:
 
     def test_missing_title(self, tmp_path):
         path = tmp_path / "bad.json"
-        path.write_text(json.dumps({"version": "1.0.0", "type": "object", "properties": {}}))
+        path.write_text(
+            json.dumps({"version": "1.0.0", "type": "object", "properties": {}})
+        )
         issues = validate_schema_file(path)
         assert "missing 'title'" in issues
 

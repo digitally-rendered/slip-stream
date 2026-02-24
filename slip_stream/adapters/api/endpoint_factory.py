@@ -130,7 +130,9 @@ class EndpointFactory:
                 try:
                     await event_bus.emit("pre_create", ctx)
                 except HookError as e:
-                    raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+                    raise HTTPException(
+                        status_code=e.status_code, detail=e.detail
+                    ) from e
 
             crud = CRUDFactory.create_crud_instance(db, schema_name, version)
             ctx.result = await crud.create(data=ctx.data, user_id=current_user["id"])
@@ -177,7 +179,9 @@ class EndpointFactory:
                 try:
                     await event_bus.emit("pre_get", ctx)
                 except HookError as e:
-                    raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+                    raise HTTPException(
+                        status_code=e.status_code, detail=e.detail
+                    ) from e
 
             ctx.result = ctx.entity
 
@@ -198,7 +202,9 @@ class EndpointFactory:
         async def list_all(
             request: Request,
             skip: int = Query(0, ge=0, description="Number of records to skip"),
-            limit: int = Query(100, ge=1, le=1000, description="Max records to return (1-1000)"),
+            limit: int = Query(
+                100, ge=1, le=1000, description="Max records to return (1-1000)"
+            ),
             where: Optional[str] = Query(
                 None,
                 description=(
@@ -225,6 +231,7 @@ class EndpointFactory:
             if where:
                 try:
                     import json as _json
+
                     raw = _json.loads(where)
                     filter_criteria = _direct_dsl.to_mongo(raw)
                 except (ValueError, QueryValidationError) as e:
@@ -256,7 +263,9 @@ class EndpointFactory:
                 try:
                     await event_bus.emit("pre_list", ctx)
                 except HookError as e:
-                    raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+                    raise HTTPException(
+                        status_code=e.status_code, detail=e.detail
+                    ) from e
 
             crud = CRUDFactory.create_crud_instance(db, schema_name, version)
             ctx.result = await crud.list_latest_active(
@@ -326,7 +335,9 @@ class EndpointFactory:
                 try:
                     await event_bus.emit("pre_update", ctx)
                 except HookError as e:
-                    raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+                    raise HTTPException(
+                        status_code=e.status_code, detail=e.detail
+                    ) from e
 
             ctx.result = await crud.update_by_entity_id(
                 entity_id=parsed_id, data=ctx.data, user_id=current_user["id"]
@@ -374,7 +385,9 @@ class EndpointFactory:
                 try:
                     await event_bus.emit("pre_delete", ctx)
                 except HookError as e:
-                    raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+                    raise HTTPException(
+                        status_code=e.status_code, detail=e.detail
+                    ) from e
 
             await crud.delete_by_entity_id(
                 entity_id=parsed_id, user_id=current_user["id"]
@@ -423,8 +436,6 @@ class EndpointFactory:
         document_model = registration.document_model
         create_model = registration.create_model
         update_model = registration.update_model
-        handler_overrides = registration.handler_overrides
-
         if prefix is None:
             prefix = schema_name.replace("_", "-")
 
@@ -513,7 +524,9 @@ class EndpointFactory:
         async def list_all(
             request: Request,
             skip: int = Query(0, ge=0, description="Number of records to skip"),
-            limit: int = Query(100, ge=1, le=1000, description="Max records to return (1-1000)"),
+            limit: int = Query(
+                100, ge=1, le=1000, description="Max records to return (1-1000)"
+            ),
             where: Optional[str] = Query(
                 None,
                 description=(
@@ -538,6 +551,7 @@ class EndpointFactory:
             if where:
                 try:
                     import json as _json
+
                     raw = _json.loads(where)
                     filter_criteria = _query_dsl.to_mongo(raw)
                 except (ValueError, QueryValidationError) as e:

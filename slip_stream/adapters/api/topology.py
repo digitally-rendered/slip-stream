@@ -58,9 +58,7 @@ def create_topology_router(
                 "name": reg.schema_name,
                 "storage_backend": reg.storage_backend,
                 "versions": schema_registry.get_all_versions(reg.schema_name),
-                "has_custom_handler": {
-                    op: op in reg.handler_overrides for op in ops
-                },
+                "has_custom_handler": {op: op in reg.handler_overrides for op in ops},
                 "has_custom_repository": not getattr(
                     reg.repository_class, "_is_auto_generated", False
                 ),
@@ -75,10 +73,12 @@ def create_topology_router(
         filter_list = []
         if filters:
             for f in sorted(filters, key=lambda x: x.order):
-                filter_list.append({
-                    "name": type(f).__name__,
-                    "order": f.order,
-                })
+                filter_list.append(
+                    {
+                        "name": type(f).__name__,
+                        "order": f.order,
+                    }
+                )
 
         config = {
             "api_prefix": api_prefix,
@@ -89,10 +89,12 @@ def create_topology_router(
             "storage_default": storage_default,
         }
 
-        return JSONResponse({
-            "schemas": schemas,
-            "filters": filter_list,
-            "config": config,
-        })
+        return JSONResponse(
+            {
+                "schemas": schemas,
+                "filters": filter_list,
+                "config": config,
+            }
+        )
 
     return router

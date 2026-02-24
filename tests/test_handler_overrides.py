@@ -12,10 +12,8 @@ from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
 from slip_stream.adapters.api.endpoint_factory import EndpointFactory
-from slip_stream.container import EntityContainer, EntityRegistration
+from slip_stream.container import EntityContainer
 from slip_stream.core.context import RequestContext
-from slip_stream.core.schema.registry import SchemaRegistry
-
 
 _db_holder: Dict[str, Any] = {}
 
@@ -85,6 +83,7 @@ class TestHandlerOverrides:
 
     def test_create_override_replaces_service(self, registration):
         """CREATE override replaces default service behavior."""
+
         async def create_handler(ctx: RequestContext) -> Any:
             # Custom behavior: add a suffix to name
             repo = registration.repository_class(ctx.db)
@@ -115,7 +114,9 @@ class TestHandlerOverrides:
         received = {}
 
         async def update_handler(ctx: RequestContext) -> Any:
-            received["entity_name"] = ctx.entity.name if hasattr(ctx.entity, "name") else None
+            received["entity_name"] = (
+                ctx.entity.name if hasattr(ctx.entity, "name") else None
+            )
             received["update_data"] = ctx.data
             received["operation"] = ctx.operation
             # Delegate to default

@@ -8,8 +8,6 @@ from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
 from slip_stream.adapters.api.endpoint_factory import EndpointFactory
-from slip_stream.core.schema.registry import SchemaRegistry
-
 
 # Use a mutable holder so each test gets a fresh DB via the fixture,
 # while the dependency function signature remains stable for FastAPI.
@@ -82,9 +80,7 @@ class TestEndpointFactory:
 
     def test_get_not_found(self, client):
         """GET /{entity_id} returns 404 for non-existent entity."""
-        response = client.get(
-            "/api/v1/widget/12345678-1234-1234-1234-123456789012"
-        )
+        response = client.get("/api/v1/widget/12345678-1234-1234-1234-123456789012")
         assert response.status_code == 404
 
     def test_list_endpoint(self, client):

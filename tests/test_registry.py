@@ -636,10 +636,14 @@ class TestRegistryPublish:
 
         ctx = _make_ctx("widget", "create")
         # Simulate a result with entity_id
-        ctx.result = type("FakeResult", (), {
-            "entity_id": "abc-123",
-            "model_dump": lambda self, **kw: {"name": "Test"},
-        })()
+        ctx.result = type(
+            "FakeResult",
+            (),
+            {
+                "entity_id": "abc-123",
+                "model_dump": lambda self, **kw: {"name": "Test"},
+            },
+        )()
         ctx.current_user = {"id": "user-1"}
 
         await bus.emit("post_create", ctx)
@@ -697,10 +701,14 @@ class TestRegistryPublish:
 
         ctx = _make_ctx("widget", "delete")
         ctx.entity_id = "eid-1"
-        ctx.result = type("R", (), {
-            "entity_id": "eid-1",
-            "model_dump": lambda self, **kw: {"should": "not appear"},
-        })()
+        ctx.result = type(
+            "R",
+            (),
+            {
+                "entity_id": "eid-1",
+                "model_dump": lambda self, **kw: {"should": "not appear"},
+            },
+        )()
 
         await bus.emit("post_delete", ctx)
 
@@ -724,10 +732,14 @@ class TestRegistryPublish:
         reg.apply(container, bus)
 
         ctx = _make_ctx("widget", "create")
-        ctx.result = type("R", (), {
-            "entity_id": "eid",
-            "model_dump": lambda self, **kw: {},
-        })()
+        ctx.result = type(
+            "R",
+            (),
+            {
+                "entity_id": "eid",
+                "model_dump": lambda self, **kw: {},
+            },
+        )()
 
         await bus.emit("post_create", ctx)
 
@@ -752,10 +764,14 @@ class TestRegistryPublish:
 
         ctx = _make_ctx("widget", "create")
         ctx.extras = {"stream_adapters": [stream]}
-        ctx.result = type("R", (), {
-            "entity_id": "eid",
-            "model_dump": lambda self, **kw: {"name": "via-extras"},
-        })()
+        ctx.result = type(
+            "R",
+            (),
+            {
+                "entity_id": "eid",
+                "model_dump": lambda self, **kw: {"name": "via-extras"},
+            },
+        )()
 
         await bus.emit("post_create", ctx)
 
@@ -774,10 +790,14 @@ class TestRegistryPublish:
         reg.apply(container, bus)
 
         ctx = _make_ctx("widget", "create")
-        ctx.result = type("R", (), {
-            "entity_id": "eid",
-            "model_dump": lambda self, **kw: {},
-        })()
+        ctx.result = type(
+            "R",
+            (),
+            {
+                "entity_id": "eid",
+                "model_dump": lambda self, **kw: {},
+            },
+        )()
 
         with caplog.at_level(logging.ERROR, logger="slip_stream.registry"):
             await bus.emit("post_create", ctx)
@@ -799,10 +819,14 @@ class TestRegistryPublish:
 
         # post_create on any schema should publish
         ctx = _make_ctx("widget", "create")
-        ctx.result = type("R", (), {
-            "entity_id": "eid",
-            "model_dump": lambda self, **kw: {},
-        })()
+        ctx.result = type(
+            "R",
+            (),
+            {
+                "entity_id": "eid",
+                "model_dump": lambda self, **kw: {},
+            },
+        )()
         await bus.emit("post_create", ctx)
 
         assert len(stream.events) == 1

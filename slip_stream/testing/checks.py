@@ -38,9 +38,7 @@ def register_hex_checks() -> None:
         ) from None
 
     @schemathesis.check
-    def entity_id_is_valid_uuid(
-        _ctx: Any, response: Any, case: Any
-    ) -> bool | None:
+    def entity_id_is_valid_uuid(_ctx: Any, response: Any, case: Any) -> bool | None:
         """POST 201 responses must contain a valid entity_id UUID."""
         if case.method.upper() != "POST" or response.status_code != 201:
             return None
@@ -69,9 +67,7 @@ def register_hex_checks() -> None:
         return None
 
     @schemathesis.check
-    def audit_timestamps_present(
-        _ctx: Any, response: Any, case: Any
-    ) -> bool | None:
+    def audit_timestamps_present(_ctx: Any, response: Any, case: Any) -> bool | None:
         """POST 201 and PATCH 200 responses must include created_at and updated_at."""
         method = case.method.upper()
         status = response.status_code

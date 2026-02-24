@@ -1,14 +1,12 @@
 """Tests for the audit trail system."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import BaseModel
 
 from slip_stream.core.audit import AuditEntry, AuditTrail
 from slip_stream.core.events import EventBus
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -96,9 +94,24 @@ class TestAuditTrailInMemory:
     @pytest.mark.asyncio
     async def test_get_history(self):
         audit = AuditTrail(in_memory=True)
-        await audit.record(operation="create", schema_name="widget", entity_id="ent-1", user_id="user-1")
-        await audit.record(operation="update", schema_name="widget", entity_id="ent-1", user_id="user-1")
-        await audit.record(operation="create", schema_name="widget", entity_id="ent-2", user_id="user-1")
+        await audit.record(
+            operation="create",
+            schema_name="widget",
+            entity_id="ent-1",
+            user_id="user-1",
+        )
+        await audit.record(
+            operation="update",
+            schema_name="widget",
+            entity_id="ent-1",
+            user_id="user-1",
+        )
+        await audit.record(
+            operation="create",
+            schema_name="widget",
+            entity_id="ent-2",
+            user_id="user-1",
+        )
 
         history = await audit.get_history("ent-1")
         assert len(history) == 2
@@ -119,9 +132,24 @@ class TestAuditTrailInMemory:
     @pytest.mark.asyncio
     async def test_get_user_activity(self):
         audit = AuditTrail(in_memory=True)
-        await audit.record(operation="create", schema_name="widget", entity_id="ent-1", user_id="user-1")
-        await audit.record(operation="update", schema_name="widget", entity_id="ent-2", user_id="user-2")
-        await audit.record(operation="delete", schema_name="widget", entity_id="ent-3", user_id="user-1")
+        await audit.record(
+            operation="create",
+            schema_name="widget",
+            entity_id="ent-1",
+            user_id="user-1",
+        )
+        await audit.record(
+            operation="update",
+            schema_name="widget",
+            entity_id="ent-2",
+            user_id="user-2",
+        )
+        await audit.record(
+            operation="delete",
+            schema_name="widget",
+            entity_id="ent-3",
+            user_id="user-1",
+        )
 
         activity = await audit.get_user_activity("user-1")
         assert len(activity) == 2
@@ -131,7 +159,12 @@ class TestAuditTrailInMemory:
     async def test_history_limit(self):
         audit = AuditTrail(in_memory=True)
         for i in range(10):
-            await audit.record(operation="update", schema_name="widget", entity_id="ent-1", user_id="user-1")
+            await audit.record(
+                operation="update",
+                schema_name="widget",
+                entity_id="ent-1",
+                user_id="user-1",
+            )
 
         history = await audit.get_history("ent-1", limit=3)
         assert len(history) == 3
@@ -238,7 +271,12 @@ class TestAuditEventBusIntegration:
         bus = EventBus()
         audit.register(bus)
 
-        ctx = _make_ctx(operation="create", data=_FakeCreateData(), result=_FakeEntity(), channel="graphql")
+        ctx = _make_ctx(
+            operation="create",
+            data=_FakeCreateData(),
+            result=_FakeEntity(),
+            channel="graphql",
+        )
         await bus.emit("post_create", ctx)
 
         assert audit._entries[0]["channel"] == "graphql"

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from slip_stream.adapters.api.schema_router import (
     register_schema_endpoint_from_registration,
 )
-from slip_stream.container import EntityContainer, init_container
+from slip_stream.container import init_container
 from slip_stream.core.schema.registry import SchemaRegistry
 from slip_stream.testing.openapi import downgrade_openapi
 
@@ -49,7 +49,8 @@ def build_test_app(
     """
     if mock_db is None:
         from mongomock_motor import AsyncMongoMockClient
-        client = AsyncMongoMockClient()
+
+        client: Any = AsyncMongoMockClient()
         mock_db = client.get_database("schemathesis_test_db")
 
     # Reset registry for clean state
@@ -82,10 +83,15 @@ def build_test_app(
 
     # Build tuple of exceptions that indicate invalid input (not server bugs)
     _validation_errors: tuple[type[Exception], ...] = (
-        TypeError, ValueError, OverflowError, KeyError, AttributeError,
+        TypeError,
+        ValueError,
+        OverflowError,
+        KeyError,
+        AttributeError,
     )
     try:
         from bson.errors import InvalidDocument, InvalidId
+
         _validation_errors = _validation_errors + (InvalidDocument, InvalidId)
     except ImportError:
         pass

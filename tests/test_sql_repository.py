@@ -13,7 +13,10 @@ from pydantic import BaseModel
 
 try:
     import sqlalchemy as sa
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import (
+        async_sessionmaker,
+        create_async_engine,
+    )
 
     HAS_SA = True
 except ImportError:
@@ -25,7 +28,6 @@ from slip_stream.adapters.persistence.db.sql_repository import (
     SQLRepository,
     build_table_from_schema,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -203,7 +205,7 @@ class TestSQLRepositoryList:
     async def test_list_excludes_deleted(self, db_session):
         session, table = db_session
         repo = SQLRepository(session, table)
-        c1 = await repo.create(WidgetCreate(name="Keep"), user_id="u1")
+        await repo.create(WidgetCreate(name="Keep"), user_id="u1")
         c2 = await repo.create(WidgetCreate(name="Delete"), user_id="u1")
         await repo.delete_by_entity_id(uuid.UUID(c2["entity_id"]), user_id="u1")
 
@@ -265,9 +267,7 @@ class TestSQLRepositoryUpdate:
     async def test_update_nonexistent(self, db_session):
         session, table = db_session
         repo = SQLRepository(session, table)
-        result = await repo.update_by_entity_id(
-            uuid.uuid4(), WidgetUpdate(name="X")
-        )
+        result = await repo.update_by_entity_id(uuid.uuid4(), WidgetUpdate(name="X"))
         assert result is None
 
     @pytest.mark.asyncio
@@ -277,9 +277,7 @@ class TestSQLRepositoryUpdate:
         created = await repo.create(WidgetCreate(name="Same"), user_id="u1")
         eid = uuid.UUID(created["entity_id"])
 
-        result = await repo.update_by_entity_id(
-            eid, WidgetUpdate(name="Same")
-        )
+        result = await repo.update_by_entity_id(eid, WidgetUpdate(name="Same"))
         assert result is None
 
     @pytest.mark.asyncio

@@ -9,7 +9,14 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Literal, Optional, Protocol, runtime_checkable
+from typing import (
+    Any,
+    Dict,
+    Literal,
+    Optional,
+    Protocol,
+    runtime_checkable,
+)
 
 from dotted_dict import DottedDict
 from pydantic import BaseModel
@@ -112,9 +119,17 @@ class RequestContext:
                         kwargs["schema_version"] = sv
 
         # Wrap plain dicts for attribute-style access
-        if "current_user" in kwargs and isinstance(kwargs["current_user"], dict) and not isinstance(kwargs["current_user"], DottedDict):
+        if (
+            "current_user" in kwargs
+            and isinstance(kwargs["current_user"], dict)
+            and not isinstance(kwargs["current_user"], DottedDict)
+        ):
             kwargs["current_user"] = DottedDict(kwargs["current_user"])
-        if "extras" in kwargs and isinstance(kwargs["extras"], dict) and not isinstance(kwargs["extras"], DottedDict):
+        if (
+            "extras" in kwargs
+            and isinstance(kwargs["extras"], dict)
+            and not isinstance(kwargs["extras"], DottedDict)
+        ):
             kwargs["extras"] = DottedDict(kwargs["extras"])
 
         return cls(

@@ -126,13 +126,21 @@ class SlipStream:
 
         self._filters = filters
         self._event_bus = event_bus
-        self._structured_errors = structured_errors or (cfg.structured_errors if cfg else False)
+        self._structured_errors = structured_errors or (
+            cfg.structured_errors if cfg else False
+        )
         self._registry = registry
         self._schema_storage = schema_storage
         self._schema_vending = schema_vending or (cfg.schema_vending if cfg else False)
-        self._schema_vending_prefix = schema_vending_prefix or (cfg.schema_vending_prefix if cfg else None) or "/schemas"
+        self._schema_vending_prefix = (
+            schema_vending_prefix
+            or (cfg.schema_vending_prefix if cfg else None)
+            or "/schemas"
+        )
         self._graphql = graphql or (cfg.graphql_enabled if cfg else False)
-        self._graphql_prefix = graphql_prefix or (cfg.graphql_prefix if cfg else None) or "/graphql"
+        self._graphql_prefix = (
+            graphql_prefix or (cfg.graphql_prefix if cfg else None) or "/graphql"
+        )
 
         # Storage routing
         self._storage_map = dict(storage_map or {})
@@ -199,9 +207,7 @@ class SlipStream:
 
         Precedence: registry decorator > constructor > config > default.
         """
-        storage_config = StorageConfig(
-            default=StorageBackend(self._storage_default)
-        )
+        storage_config = StorageConfig(default=StorageBackend(self._storage_default))
 
         # Layer 1: constructor/config storage_map
         for name, backend in self._storage_map.items():
@@ -266,7 +272,8 @@ class SlipStream:
         # Initialize SQL tables if any schemas are routed to SQL
         sql_tables: Dict[str, Any] = {}
         sql_schemas = [
-            name for name in schema_names
+            name
+            for name in schema_names
             if storage_config.get(name) == StorageBackend.SQL
         ]
 
@@ -315,12 +322,16 @@ class SlipStream:
 
         # Apply registry overrides (must run after container init, before routes)
         if self._registry is not None:
+            assert (
+                self._event_bus is not None
+            )  # guaranteed by __init__ when registry is set
             self._registry.apply(self._container, self._event_bus)
             logger.info("Registry applied: handlers and hooks merged")
 
         # Build per-schema get_db dependencies
         def _make_sql_get_db(session_factory: Any) -> Callable:
             """Create a FastAPI dependency that yields an AsyncSession."""
+
             async def get_sql_db() -> Any:
                 async with session_factory() as session:
                     try:
@@ -329,9 +340,12 @@ class SlipStream:
                     except Exception:
                         await session.rollback()
                         raise
+
             return get_sql_db
 
-        sql_get_db = _make_sql_get_db(sql_session_factory) if sql_session_factory else None
+        sql_get_db = (
+            _make_sql_get_db(sql_session_factory) if sql_session_factory else None
+        )
 
         # Register endpoints for all schemas
         for schema_name in schema_names:
@@ -344,7 +358,11 @@ class SlipStream:
             else:
                 get_db_for_schema = self._get_db
 
-            logger.info("Registering endpoint: /%s (backend=%s)", path_name, registration.storage_backend)
+            logger.info(
+                "Registering endpoint: /%s (backend=%s)",
+                path_name,
+                registration.storage_backend,
+            )
             register_schema_endpoint_from_registration(
                 api_router=self._api_router,
                 registration=registration,
@@ -368,9 +386,7 @@ class SlipStream:
                 prefix=self._schema_vending_prefix,
             )
             self.app.include_router(vending_router)
-            logger.info(
-                "Schema vending API mounted at %s", self._schema_vending_prefix
-            )
+            logger.info("Schema vending API mounted at %s", self._schema_vending_prefix)
 
         # Mount health and readiness probes
         from slip_stream.adapters.api.health import create_health_router
@@ -428,9 +444,7 @@ class SlipStream:
             chain = FilterChain()
             chain.add_filters(self._filters)
             self.app.add_middleware(FilterChainMiddleware, filter_chain=chain)
-            logger.info(
-                "Filter chain installed with %d filter(s)", len(self._filters)
-            )
+            logger.info("Filter chain installed with %d filter(s)", len(self._filters))
 
         yield
 

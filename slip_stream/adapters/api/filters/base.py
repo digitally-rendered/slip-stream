@@ -73,9 +73,7 @@ class FilterBase(ABC):
     order: int = 100
 
     @abstractmethod
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         """Process an incoming request before it reaches the endpoint.
 
         Modify the request or context in-place. Raise ``FilterShortCircuit``

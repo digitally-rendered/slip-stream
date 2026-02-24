@@ -14,7 +14,6 @@ from starlette.responses import Response
 from slip_stream.adapters.api.filters.base import (
     FilterBase,
     FilterContext,
-    FilterShortCircuit,
 )
 
 

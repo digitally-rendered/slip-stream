@@ -42,10 +42,8 @@ class FilterChainMiddleware(BaseHTTPMiddleware):
         try:
             context = await self.filter_chain.process_request(request)
         except FilterShortCircuit as sc:
-            logger.debug(
-                "Filter short-circuited with status %d", sc.status_code
-            )
-            response = JSONResponse(
+            logger.debug("Filter short-circuited with status %d", sc.status_code)
+            response: Response = JSONResponse(
                 status_code=sc.status_code,
                 content={"detail": sc.body} if sc.body else {},
                 headers=sc.headers,
@@ -62,8 +60,6 @@ class FilterChainMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        response = await self.filter_chain.process_response(
-            request, response, context
-        )
+        response = await self.filter_chain.process_response(request, response, context)
 
         return response

@@ -48,9 +48,7 @@ class AuthFilter(FilterBase):
         self.authenticate = authenticate
         self.realm = realm
 
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         user = await self.authenticate(request)
         if user is None:
             raise FilterShortCircuit(

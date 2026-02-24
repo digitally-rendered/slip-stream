@@ -1,8 +1,5 @@
 """Tests for the event streaming adapter."""
 
-import asyncio
-import time
-
 import pytest
 
 from slip_stream.adapters.streaming.base import (
@@ -11,7 +8,6 @@ from slip_stream.adapters.streaming.base import (
     StreamAdapter,
     StreamEvent,
 )
-
 
 # ---------------------------------------------------------------------------
 # StreamEvent dataclass

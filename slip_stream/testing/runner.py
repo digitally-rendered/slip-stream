@@ -75,10 +75,6 @@ class SchemaTestRunner:
 
         from slip_stream.container import get_container
         from slip_stream.core.schema.registry import SchemaRegistry
-        from slip_stream.testing.data_gen import (
-            generate_create_data,
-            generate_update_payload,
-        )
 
         app = self.build_app()
         registry = SchemaRegistry()
@@ -141,9 +137,7 @@ class SchemaTestRunner:
             assert created.get("deleted_at") is None
 
             # 2. GET
-            resp = client.get(
-                f"{path_prefix}/{entity_id}", headers=auth_headers
-            )
+            resp = client.get(f"{path_prefix}/{entity_id}", headers=auth_headers)
             assert resp.status_code == 200, f"GET failed: {resp.status_code}"
             assert resp.json()["entity_id"] == entity_id
             result.steps_completed = 2
@@ -158,9 +152,7 @@ class SchemaTestRunner:
             result.steps_completed = 3
 
             # 4. UPDATE
-            update_payload = generate_update_payload(
-                schema_name, created, container
-            )
+            update_payload = generate_update_payload(schema_name, created, container)
             resp = client.patch(
                 f"{path_prefix}/{entity_id}",
                 json=update_payload,
@@ -173,16 +165,12 @@ class SchemaTestRunner:
             result.steps_completed = 4
 
             # 5. DELETE
-            resp = client.delete(
-                f"{path_prefix}/{entity_id}", headers=auth_headers
-            )
+            resp = client.delete(f"{path_prefix}/{entity_id}", headers=auth_headers)
             assert resp.status_code == 204, f"DELETE failed: {resp.status_code}"
             result.steps_completed = 5
 
             # 6. VERIFY SOFT DELETE
-            resp = client.get(
-                f"{path_prefix}/{entity_id}", headers=auth_headers
-            )
+            resp = client.get(f"{path_prefix}/{entity_id}", headers=auth_headers)
             assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
             result.steps_completed = 6
 
@@ -211,26 +199,29 @@ class SchemaTestRunner:
         Returns:
             The exit code from schemathesis.
         """
+        import json
         import subprocess
         import sys
         import tempfile
-        import json
 
         app = self.build_app()
 
         # Write the OpenAPI schema to a temp file
         schema = app.openapi()
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(schema, f)
             schema_path = f.name
 
         cmd = [
-            sys.executable, "-m", "schemathesis", "run",
+            sys.executable,
+            "-m",
+            "schemathesis",
+            "run",
             schema_path,
-            "--checks", checks,
-            "--workers", workers,
+            "--checks",
+            checks,
+            "--workers",
+            workers,
         ]
         if extra_args:
             cmd.extend(extra_args)

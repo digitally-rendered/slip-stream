@@ -1,7 +1,5 @@
 """Tests for ContentNegotiationFilter (JSON / YAML / XML)."""
 
-import json
-
 import pytest
 import xmltodict
 import yaml
@@ -167,9 +165,7 @@ class TestContentNegotiationRoundTrip:
         assert data["name"] == "round-trip"
 
     def test_xml_in_yaml_out(self, client):
-        xml_body = xmltodict.unparse(
-            {"item": {"name": "cross-format"}}, pretty=True
-        )
+        xml_body = xmltodict.unparse({"item": {"name": "cross-format"}}, pretty=True)
         response = client.post(
             "/echo",
             content=xml_body,

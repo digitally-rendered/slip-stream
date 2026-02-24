@@ -26,11 +26,10 @@ Usage::
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +73,7 @@ class StreamAdapter(Protocol):
 @dataclass
 class StreamEvent:
     """An event message ready for publishing."""
+
     topic: str
     key: str | None
     payload: dict[str, Any]
@@ -228,5 +228,6 @@ class EventStreamBridge:
             except Exception as e:
                 logger.error(
                     "Failed to publish to %s: %s",
-                    type(adapter).__name__, e,
+                    type(adapter).__name__,
+                    e,
                 )

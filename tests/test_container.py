@@ -3,9 +3,8 @@
 import pytest
 from pydantic import BaseModel
 
-from slip_stream.container import EntityContainer, init_container, get_container
+from slip_stream.container import EntityContainer, get_container, init_container
 from slip_stream.core.domain.base import BaseDocument
-from slip_stream.core.schema.registry import SchemaRegistry
 
 
 @pytest.fixture

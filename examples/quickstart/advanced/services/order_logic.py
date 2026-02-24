@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from slip_stream import HookError, RequestContext, SlipStreamRegistry
 
 if TYPE_CHECKING:
-    from examples.quickstart.advanced.ports import ShippingPort, ShipmentRequest
+    from examples.quickstart.advanced.ports import ShippingPort
 
 logger = logging.getLogger(__name__)
 

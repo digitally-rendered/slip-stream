@@ -1,17 +1,14 @@
 """Tests for storage routing and SQL repository factory."""
 
-import uuid
-from pathlib import Path
-
 import pytest
 
 from slip_stream.core.storage import StorageBackend, StorageConfig
 from slip_stream.registry import SlipStreamRegistry
 
-
 # ---------------------------------------------------------------------------
 # StorageBackend enum
 # ---------------------------------------------------------------------------
+
 
 class TestStorageBackend:
 
@@ -35,6 +32,7 @@ class TestStorageBackend:
 # ---------------------------------------------------------------------------
 # StorageConfig
 # ---------------------------------------------------------------------------
+
 
 class TestStorageConfig:
 
@@ -104,6 +102,7 @@ class TestStorageConfig:
 # Registry storage() method
 # ---------------------------------------------------------------------------
 
+
 class TestRegistryStorage:
 
     def test_storage_direct_call(self):
@@ -156,6 +155,7 @@ class TestRegistryStorage:
 # EntityRegistration storage_backend field
 # ---------------------------------------------------------------------------
 
+
 class TestEntityRegistrationStorageBackend:
 
     def test_default_storage_backend(self, schema_dir, registry):
@@ -169,9 +169,10 @@ class TestEntityRegistrationStorageBackend:
 
     def test_sql_storage_backend_set_via_config(self, schema_dir, registry):
         """EntityRegistration gets 'sql' when StorageConfig routes to SQL."""
+        import sqlalchemy as sa
+
         from slip_stream.container import init_container
 
-        import sqlalchemy as sa
         metadata = sa.MetaData()
         from slip_stream.adapters.persistence.db.sql_repository import (
             build_table_from_schema,
@@ -201,6 +202,7 @@ class TestEntityRegistrationStorageBackend:
 # ---------------------------------------------------------------------------
 # SQLRepositoryFactory
 # ---------------------------------------------------------------------------
+
 
 class TestSQLRepositoryFactory:
 
@@ -243,6 +245,7 @@ class TestSQLRepositoryFactory:
 # SQL CRUD integration (using aiosqlite)
 # ---------------------------------------------------------------------------
 
+
 class TestSQLCRUDIntegration:
 
     @pytest.fixture
@@ -250,9 +253,10 @@ class TestSQLCRUDIntegration:
         """Create an in-memory SQLite database with widget table."""
         import sqlalchemy as sa
         from sqlalchemy.ext.asyncio import (
-            create_async_engine,
             async_sessionmaker,
+            create_async_engine,
         )
+
         from slip_stream.adapters.persistence.db.sql_repository import (
             build_table_from_schema,
         )
@@ -373,6 +377,7 @@ class TestSQLCRUDIntegration:
 # ---------------------------------------------------------------------------
 # StorageConfig precedence
 # ---------------------------------------------------------------------------
+
 
 class TestStorageConfigPrecedence:
     """Verify decorator > constructor > config > default precedence."""

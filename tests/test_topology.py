@@ -1,7 +1,7 @@
 """Tests for the /_topology introspection endpoint."""
 
-import pytest
 from dataclasses import dataclass, field
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

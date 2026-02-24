@@ -81,11 +81,17 @@ class StorageConfig:
 
     def sql_schemas(self) -> List[str]:
         """Return schema names explicitly routed to SQL."""
-        return [name for name, backend in self._map.items() if backend == StorageBackend.SQL]
+        return [
+            name for name, backend in self._map.items() if backend == StorageBackend.SQL
+        ]
 
     def mongo_schemas(self) -> List[str]:
         """Return schema names explicitly routed to MongoDB."""
-        return [name for name, backend in self._map.items() if backend == StorageBackend.MONGO]
+        return [
+            name
+            for name, backend in self._map.items()
+            if backend == StorageBackend.MONGO
+        ]
 
     def merge(self, other: StorageConfig) -> None:
         """Merge another config into this one (other's entries take precedence)."""

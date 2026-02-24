@@ -13,11 +13,20 @@ from typing import Any, Dict, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-_AUDIT_FIELDS = frozenset({
-    "id", "entity_id", "schema_version", "record_version",
-    "created_at", "updated_at", "deleted_at",
-    "created_by", "updated_by", "deleted_by",
-})
+_AUDIT_FIELDS = frozenset(
+    {
+        "id",
+        "entity_id",
+        "schema_version",
+        "record_version",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by",
+        "updated_by",
+        "deleted_by",
+    }
+)
 
 
 def _generate_value_for_type(annotation: Any, field_name: str) -> Any:
@@ -88,6 +97,7 @@ def generate_create_data(
     """
     if container is None:
         from slip_stream.container import get_container
+
         container = get_container()
     registration = container.get(schema_name)
     return _generate_from_pydantic_model(registration.create_model)
@@ -111,6 +121,7 @@ def generate_update_payload(
     """
     if container is None:
         from slip_stream.container import get_container
+
         container = get_container()
     registration = container.get(schema_name)
     update_model_cls = registration.update_model

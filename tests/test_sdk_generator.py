@@ -2,10 +2,7 @@
 
 import ast
 
-import pytest
-
 from slip_stream.sdk_generator import generate_sdk
-
 
 WIDGET_SCHEMA = {
     "title": "Widget",
@@ -131,7 +128,12 @@ class TestGenerateSDK:
                 continue
             if in_create and line.startswith("class "):
                 break
-            if in_create and ":" in line and not line.strip().startswith("#") and not line.strip().startswith('"""'):
+            if (
+                in_create
+                and ":" in line
+                and not line.strip().startswith("#")
+                and not line.strip().startswith('"""')
+            ):
                 field_name = line.strip().split(":")[0]
                 create_fields.append(field_name)
         assert "entity_id" not in create_fields
@@ -161,12 +163,14 @@ class TestGenerateSDK:
         assert "sort:" in code
 
     def test_empty_schema(self):
-        code = generate_sdk({
-            "bare": {
-                "title": "Bare",
-                "type": "object",
-                "properties": {},
+        code = generate_sdk(
+            {
+                "bare": {
+                    "title": "Bare",
+                    "type": "object",
+                    "properties": {},
+                }
             }
-        })
+        )
         ast.parse(code)
         assert "class Bare(BaseModel):" in code

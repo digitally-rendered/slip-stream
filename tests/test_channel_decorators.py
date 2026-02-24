@@ -5,7 +5,6 @@ Verifies that the ``channel`` parameter on ``@handler``, ``@guard``,
 specific transport channels (REST, GraphQL, or all).
 """
 
-import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,10 +12,9 @@ import pytest
 from pydantic import BaseModel
 
 from slip_stream.core.context import RequestContext
-from slip_stream.core.events import EventBus, HookError
+from slip_stream.core.events import EventBus
 from slip_stream.core.operation import OperationExecutor, _resolve_handler_override
 from slip_stream.registry import SlipStreamRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -212,24 +210,28 @@ class TestRegistryChannelDecorator:
     def test_handler_channel_validation(self):
         reg = SlipStreamRegistry()
         with pytest.raises(ValueError, match="Unknown channel"):
+
             @reg.handler("widget", "create", channel="invalid")
             async def h(ctx): ...
 
     def test_guard_channel_validation(self):
         reg = SlipStreamRegistry()
         with pytest.raises(ValueError, match="Unknown channel"):
+
             @reg.guard("widget", "create", channel="invalid")
             async def g(ctx): ...
 
     def test_validate_channel_validation(self):
         reg = SlipStreamRegistry()
         with pytest.raises(ValueError, match="Unknown channel"):
+
             @reg.validate("widget", "create", channel="invalid")
             async def v(ctx): ...
 
     def test_transform_channel_validation(self):
         reg = SlipStreamRegistry()
         with pytest.raises(ValueError, match="Unknown channel"):
+
             @reg.transform("widget", "create", channel="invalid")
             async def t(ctx): ...
 

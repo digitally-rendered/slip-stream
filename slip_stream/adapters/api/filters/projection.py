@@ -43,9 +43,7 @@ class FieldProjectionFilter(FilterBase):
         self.role_field_rules = role_field_rules or {}
         self.allow_query_projection = allow_query_projection
 
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         """Parse ``?fields=`` query parameter."""
         if self.allow_query_projection:
             fields_param = request.query_params.get("fields")
@@ -68,9 +66,7 @@ class FieldProjectionFilter(FilterBase):
             if schema_name and schema_name in self.role_field_rules:
                 user_role = context.user.get("role", "*")
                 schema_rules = self.role_field_rules[schema_name]
-                role_allowed = schema_rules.get(
-                    user_role, schema_rules.get("*")
-                )
+                role_allowed = schema_rules.get(user_role, schema_rules.get("*"))
 
         query_fields: Optional[Set[str]] = context.extras.get("projected_fields")
 
@@ -126,4 +122,3 @@ class FieldProjectionFilter(FilterBase):
         if len(parts) >= 3:
             return parts[2].replace("-", "_")
         return None
-

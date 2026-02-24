@@ -11,7 +11,6 @@ from pydantic import BaseModel
 from slip_stream.core.events import EventBus
 from slip_stream.core.webhooks import WebhookDispatcher, WebhookRegistration
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -235,9 +234,7 @@ class TestWebhookSigning:
         payload = json.dumps({"event": "create"}).encode("utf-8")
         sig = WebhookDispatcher._sign_payload(payload, "secret123")
 
-        expected = hmac.new(
-            b"secret123", payload, hashlib.sha256
-        ).hexdigest()
+        expected = hmac.new(b"secret123", payload, hashlib.sha256).hexdigest()
         assert sig == expected
 
     def test_sign_payload_different_secret(self):

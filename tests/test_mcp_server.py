@@ -1,14 +1,13 @@
 """Tests for the MCP server tools."""
 
 import json
-from pathlib import Path
 
 import pytest
 
 from slip_stream.core.schema.registry import SchemaRegistry
 from slip_stream.mcp.server import (
-    create_mcp_server,
     _extract_refs_from_schema,
+    create_mcp_server,
 )
 from slip_stream.schema_utils import create_schema_file
 
@@ -97,11 +96,13 @@ class TestMcpToolHandlers:
         for name in names:
             versions = registry.get_all_versions(name)
             latest = registry.get_latest_version(name)
-            result.append({
-                "name": name,
-                "versions": versions,
-                "latest_version": latest,
-            })
+            result.append(
+                {
+                    "name": name,
+                    "versions": versions,
+                    "latest_version": latest,
+                }
+            )
         assert len(result) == 2
         names = [s["name"] for s in result]
         assert "widget" in names
@@ -141,12 +142,14 @@ class TestMcpToolHandlers:
             latest = registry.get_latest_version(name)
             schema = registry.get_schema(name, latest)
             deps = _extract_refs_from_schema(schema)
-            dag.append({
-                "name": name,
-                "versions": versions,
-                "latest_version": latest,
-                "dependencies": deps,
-            })
+            dag.append(
+                {
+                    "name": name,
+                    "versions": versions,
+                    "latest_version": latest,
+                    "dependencies": deps,
+                }
+            )
         assert len(dag) == 2
         names = [n["name"] for n in dag]
         assert "widget" in names
@@ -159,19 +162,28 @@ class TestMcpToolHandlers:
         required = schema.get("required", [])
 
         audit_fields = {
-            "id", "entity_id", "schema_version", "record_version",
-            "created_at", "updated_at", "deleted_at",
-            "created_by", "updated_by", "deleted_by",
+            "id",
+            "entity_id",
+            "schema_version",
+            "record_version",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "created_by",
+            "updated_by",
+            "deleted_by",
         }
 
         fields = []
         for field_name, field_def in properties.items():
-            fields.append({
-                "name": field_name,
-                "type": field_def.get("type", "any"),
-                "required": field_name in required,
-                "is_audit_field": field_name in audit_fields,
-            })
+            fields.append(
+                {
+                    "name": field_name,
+                    "type": field_def.get("type", "any"),
+                    "required": field_name in required,
+                    "is_audit_field": field_name in audit_fields,
+                }
+            )
 
         user_fields = [f for f in fields if not f["is_audit_field"]]
         assert len(user_fields) > 0
@@ -239,10 +251,8 @@ class TestCreateSchemaTool:
         schemas_dir = tmp_path / "schemas"
         schemas_dir.mkdir()
 
-        server = create_mcp_server(schema_dir=str(schemas_dir))
-        # Access the call_tool handler via server internals
-        handler = server.request_handlers.get("tools/call")
-        # Instead, test the logic directly by simulating what the handler does
+        create_mcp_server(schema_dir=str(schemas_dir))
+        # Test the logic directly by simulating what the handler does
         from slip_stream.schema_utils import create_schema_file, snake_case
 
         target = create_schema_file(schemas_dir, "order")
@@ -264,7 +274,9 @@ class TestCreateSchemaTool:
         schemas_dir = tmp_path / "schemas"
         schemas_dir.mkdir()
 
-        target = create_schema_file(schemas_dir, "invoice", description="A billing invoice.")
+        target = create_schema_file(
+            schemas_dir, "invoice", description="A billing invoice."
+        )
         data = json.loads(target.read_text())
         assert data["description"] == "A billing invoice."
 

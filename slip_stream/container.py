@@ -42,7 +42,6 @@ from pydantic import BaseModel
 from slip_stream.adapters.persistence.db.repository_factory import RepositoryFactory
 from slip_stream.core.domain.base import BaseDocument
 from slip_stream.core.schema.registry import SchemaRegistry
-from slip_stream.core.storage import StorageBackend, StorageConfig
 from slip_stream.core.services.generic import (
     GenericCreateService,
     GenericDeleteService,
@@ -50,6 +49,7 @@ from slip_stream.core.services.generic import (
     GenericListService,
     GenericUpdateService,
 )
+from slip_stream.core.storage import StorageBackend, StorageConfig
 
 _container: "EntityContainer | None" = None
 
@@ -134,7 +134,9 @@ class EntityContainer:
 
     def resolve_all(self, schema_names: list[str]) -> None:
         """Resolve and register every schema name in *schema_names*."""
-        logger.info("Resolving %d schema(s): %s", len(schema_names), ", ".join(schema_names))
+        logger.info(
+            "Resolving %d schema(s): %s", len(schema_names), ", ".join(schema_names)
+        )
         for name in schema_names:
             registration = self._resolve_entity(name)
             self._registrations[name] = registration

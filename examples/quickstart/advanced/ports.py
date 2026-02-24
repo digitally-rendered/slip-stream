@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-
 # ---------------------------------------------------------------------------
 # Domain transfer objects — the shape of data crossing the port boundary
 # ---------------------------------------------------------------------------

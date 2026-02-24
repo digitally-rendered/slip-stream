@@ -9,27 +9,22 @@ Covers:
 """
 
 import json
-import uuid
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-from starlette.testclient import TestClient as StarletteTestClient
+from starlette.responses import Response
 
 from slip_stream.adapters.api.filters.base import FilterContext
 from slip_stream.adapters.api.filters.envelope import ResponseEnvelopeFilter
 from slip_stream.adapters.api.filters.schema_version import SchemaVersionFilter
-from slip_stream.core.operation import _resolve_handler_override
-from slip_stream.container import EntityContainer, EntityRegistration
+from slip_stream.container import EntityContainer
 from slip_stream.core.context import RequestContext
 from slip_stream.core.events import EventBus
+from slip_stream.core.operation import _resolve_handler_override
 from slip_stream.core.schema.registry import SchemaRegistry
 from slip_stream.registry import SlipStreamRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -107,9 +102,7 @@ class TestRequestContextSchemaVersion:
         )
         assert ctx.schema_version is None
 
-    def test_from_request_explicit_overrides_header(
-        self, mock_request_with_version
-    ):
+    def test_from_request_explicit_overrides_header(self, mock_request_with_version):
         ctx = RequestContext.from_request(
             request=mock_request_with_version,
             operation="get",
@@ -333,7 +326,9 @@ class TestSchemaVersionFilter:
         context.extras["schema_version"] = "1.0.0"
 
         body = json.dumps({"name": "foo", "color": "blue", "id": "abc"})
-        response = Response(content=body, status_code=200, media_type="application/json")
+        response = Response(
+            content=body, status_code=200, media_type="application/json"
+        )
 
         result = await version_filter.on_response(request, response, context)
         data = json.loads(result.body)
@@ -373,7 +368,9 @@ class TestSchemaVersionFilter:
 
         # Response from latest version doesn't have legacy_field
         body = json.dumps({"name": "foo"})
-        response = Response(content=body, status_code=200, media_type="application/json")
+        response = Response(
+            content=body, status_code=200, media_type="application/json"
+        )
 
         result = await version_filter.on_response(request, response, context)
         data = json.loads(result.body)
@@ -404,11 +401,15 @@ class TestSchemaVersionFilter:
         context = FilterContext()
         context.extras["schema_version"] = "1.0.0"
 
-        body = json.dumps([
-            {"name": "a", "extra": "x"},
-            {"name": "b", "extra": "y"},
-        ])
-        response = Response(content=body, status_code=200, media_type="application/json")
+        body = json.dumps(
+            [
+                {"name": "a", "extra": "x"},
+                {"name": "b", "extra": "y"},
+            ]
+        )
+        response = Response(
+            content=body, status_code=200, media_type="application/json"
+        )
 
         result = await version_filter.on_response(request, response, context)
         data = json.loads(result.body)
@@ -468,7 +469,9 @@ class TestEnvelopeSchemaVersion:
         context.extras["schema_version"] = "2.0.0"
 
         body = json.dumps({"name": "foo"})
-        response = Response(content=body, status_code=200, media_type="application/json")
+        response = Response(
+            content=body, status_code=200, media_type="application/json"
+        )
 
         result = await envelope_filter.on_response(request, response, context)
         data = json.loads(result.body)
@@ -485,7 +488,9 @@ class TestEnvelopeSchemaVersion:
         context.extras["request_id"] = "test-123"
 
         body = json.dumps({"name": "foo"})
-        response = Response(content=body, status_code=200, media_type="application/json")
+        response = Response(
+            content=body, status_code=200, media_type="application/json"
+        )
 
         result = await envelope_filter.on_response(request, response, context)
         data = json.loads(result.body)

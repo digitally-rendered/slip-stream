@@ -7,8 +7,7 @@ dependency callables to the EndpointFactory or SlipStream app builder.
 import uuid
 from typing import Any, Dict
 
-from fastapi import Depends, Header, HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from fastapi import Header, HTTPException, status
 
 
 def default_get_current_user(

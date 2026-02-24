@@ -306,6 +306,8 @@ class TestProjectionEdgeCases:
         context = FilterContext()
         await f.on_request(request, context)
 
-        response = Response(content="not json", status_code=200, media_type="text/plain")
+        response = Response(
+            content="not json", status_code=200, media_type="text/plain"
+        )
         result = await f.on_response(request, response, context)
         assert result.body == b"not json"

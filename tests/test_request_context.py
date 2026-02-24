@@ -4,9 +4,8 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from starlette.requests import Request
-
 from dotted_dict import DottedDict
+from starlette.requests import Request
 
 from slip_stream.core.context import HandlerOverride, RequestContext
 
@@ -254,8 +253,6 @@ class TestHandlerOverride:
             return {"name": ctx.schema_name}
 
         request = _make_request()
-        ctx = RequestContext(
-            request=request, operation="get", schema_name="widget"
-        )
+        ctx = RequestContext(request=request, operation="get", schema_name="widget")
         result = await my_handler(ctx)
         assert result == {"name": "widget"}

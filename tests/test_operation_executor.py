@@ -9,7 +9,7 @@ Verifies that the executor correctly orchestrates:
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import BaseModel
@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from slip_stream.core.context import RequestContext
 from slip_stream.core.events import EventBus, HookError
 from slip_stream.core.operation import OperationExecutor, _resolve_handler_override
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -113,19 +112,30 @@ class TestResolveHandlerOverride:
 
     def test_version_specific(self):
         overrides = {"create": "universal", "create@2.0.0": "v2"}
-        assert _resolve_handler_override(overrides, "create", schema_version="2.0.0") == "v2"
+        assert (
+            _resolve_handler_override(overrides, "create", schema_version="2.0.0")
+            == "v2"
+        )
 
     def test_version_fallback_to_universal(self):
         overrides = {"create": "universal"}
-        assert _resolve_handler_override(overrides, "create", schema_version="2.0.0") == "universal"
+        assert (
+            _resolve_handler_override(overrides, "create", schema_version="2.0.0")
+            == "universal"
+        )
 
     def test_channel_specific(self):
         overrides = {"create": "universal", "create@channel:graphql": "gql"}
-        assert _resolve_handler_override(overrides, "create", channel="graphql") == "gql"
+        assert (
+            _resolve_handler_override(overrides, "create", channel="graphql") == "gql"
+        )
 
     def test_channel_fallback_to_universal(self):
         overrides = {"create": "universal"}
-        assert _resolve_handler_override(overrides, "create", channel="graphql") == "universal"
+        assert (
+            _resolve_handler_override(overrides, "create", channel="graphql")
+            == "universal"
+        )
 
     def test_version_plus_channel(self):
         overrides = {
@@ -144,7 +154,9 @@ class TestResolveHandlerOverride:
 
     def test_star_channel_treated_as_universal(self):
         overrides = {"create": "universal"}
-        assert _resolve_handler_override(overrides, "create", channel="*") == "universal"
+        assert (
+            _resolve_handler_override(overrides, "create", channel="*") == "universal"
+        )
 
 
 # ---------------------------------------------------------------------------

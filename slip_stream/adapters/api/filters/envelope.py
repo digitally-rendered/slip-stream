@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -36,9 +36,7 @@ class ResponseEnvelopeFilter(FilterBase):
     def __init__(self, include_pagination: bool = True) -> None:
         self.include_pagination = include_pagination
 
-    async def on_request(
-        self, request: Request, context: FilterContext
-    ) -> None:
+    async def on_request(self, request: Request, context: FilterContext) -> None:
         """Generate and store a request_id."""
         context.extras["request_id"] = str(uuid.uuid4())
 

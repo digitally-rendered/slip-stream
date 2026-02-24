@@ -68,7 +68,11 @@ class BaseDocument(BaseModel):
                 ):
                     data[key] = uuid.UUID(bytes=value)
                 # Handle string UUIDs for fields that should be UUID objects
-                elif isinstance(value, str) and cls._is_uuid_field(key) and key not in string_uuid_fields:
+                elif (
+                    isinstance(value, str)
+                    and cls._is_uuid_field(key)
+                    and key not in string_uuid_fields
+                ):
                     try:
                         data[key] = uuid.UUID(value)
                     except ValueError:

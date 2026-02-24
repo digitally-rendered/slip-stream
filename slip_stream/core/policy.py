@@ -44,9 +44,7 @@ logger = logging.getLogger(__name__)
 class PolicyEngine(Protocol):
     """Protocol for policy evaluation backends."""
 
-    async def evaluate(
-        self, policy_path: str, input_data: dict[str, Any]
-    ) -> bool:
+    async def evaluate(self, policy_path: str, input_data: dict[str, Any]) -> bool:
         """Evaluate a policy and return whether the request is allowed.
 
         Args:
@@ -97,11 +95,12 @@ class OpaRemotePolicy:
         self.url = url.rstrip("/")
         self.default_policy = default_policy
         self.timeout = timeout
-        self._client = None
+        self._client: Any = None
 
     async def _get_client(self) -> Any:
         if self._client is None:
             import httpx
+
             self._client = httpx.AsyncClient(timeout=self.timeout)
         return self._client
 
@@ -324,10 +323,12 @@ class InlinePolicy:
         Returns:
             The original function, unchanged.
         """
+
         def decorator(fn: Any) -> Any:
             normalized = policy_path.replace(".", "/")
             self._rules[normalized] = fn
             return fn
+
         return decorator
 
     def register_rule(self, policy_path: str, fn: Any) -> None:
@@ -359,6 +360,7 @@ class InlinePolicy:
             return False
 
         import asyncio
+
         if asyncio.iscoroutinefunction(handler):
             return bool(await handler(input_data or {}))
         return bool(handler(input_data or {}))
@@ -381,4 +383,5 @@ class InlinePolicy:
 
 class PolicyEvaluationError(Exception):
     """Raised when a policy evaluation fails."""
+
     pass

@@ -5,7 +5,6 @@ import uuid
 import pytest
 
 from slip_stream.adapters.persistence.db.generic_crud import VersionedMongoCRUD
-from slip_stream.core.schema.registry import SchemaRegistry
 
 
 @pytest.fixture
@@ -193,14 +192,16 @@ class TestCountActive:
     @pytest.mark.asyncio
     async def test_count_active_excludes_deleted(self, crud, create_model):
         """count_active excludes soft-deleted entities."""
-        w1 = await crud.create(create_model(name="Keep"))
+        await crud.create(create_model(name="Keep"))
         w2 = await crud.create(create_model(name="Delete"))
         await crud.delete_by_entity_id(w2.entity_id)
         count = await crud.count_active()
         assert count == 1
 
     @pytest.mark.asyncio
-    async def test_count_active_counts_latest_version_only(self, crud, create_model, update_model):
+    async def test_count_active_counts_latest_version_only(
+        self, crud, create_model, update_model
+    ):
         """count_active does not double-count updated entities."""
         w = await crud.create(create_model(name="Original"))
         await crud.update_by_entity_id(w.entity_id, update_model(name="Updated"))

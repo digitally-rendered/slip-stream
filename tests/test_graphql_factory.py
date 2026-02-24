@@ -5,11 +5,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic import BaseModel
 
+from slip_stream.container import EntityContainer
 from slip_stream.core.events import EventBus, HookError
 from slip_stream.core.schema.registry import SchemaRegistry
-from slip_stream.container import EntityContainer
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +57,7 @@ class TestGraphQLFactory:
 
     def test_import(self):
         from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
         factory = GraphQLFactory()
         assert factory is not None
 
@@ -247,8 +247,9 @@ class TestGraphQLLifecycle:
         # Strawberry input as a simple object with matching fields
         mock_input = SimpleNamespace(name="test")
         import strawberry
+
         # We need to patch strawberry.asdict since mock_input isn't a real strawberry type
-        with MagicMock() as mock_asdict:
+        with MagicMock():
             original_asdict = strawberry.asdict
             strawberry.asdict = lambda x: {"name": "test"}
             try:
@@ -280,12 +281,11 @@ class TestGraphQLLifecycle:
         et = factory._create_entity_type(pascal, properties, "widget")
         ci, _ = factory._create_input_types(pascal, properties, required)
 
-        resolver = factory._make_create_resolver(
-            "widget", et, ci, reg, lambda: None
-        )
+        resolver = factory._make_create_resolver("widget", et, ci, reg, lambda: None)
 
         info = self._make_fake_info()
         import strawberry
+
         original_asdict = strawberry.asdict
         strawberry.asdict = lambda x: {"name": "test"}
         try:
@@ -323,6 +323,7 @@ class TestGraphQLLifecycle:
 
         info = self._make_fake_info()
         import strawberry
+
         original_asdict = strawberry.asdict
         strawberry.asdict = lambda x: {"name": "test"}
         try:

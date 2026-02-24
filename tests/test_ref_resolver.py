@@ -27,9 +27,7 @@ class TestInternalRefs:
                     "properties": {"r": {"type": "integer"}},
                 }
             },
-            "properties": {
-                "color": {"$ref": "#/definitions/Color"}
-            },
+            "properties": {"color": {"$ref": "#/definitions/Color"}},
         }
         result = resolver.resolve(schema)
         assert result["properties"]["color"]["type"] == "object"
@@ -42,14 +40,10 @@ class TestInternalRefs:
                 "Inner": {"type": "string"},
                 "Outer": {
                     "type": "object",
-                    "properties": {
-                        "value": {"$ref": "#/definitions/Inner"}
-                    },
+                    "properties": {"value": {"$ref": "#/definitions/Inner"}},
                 },
             },
-            "properties": {
-                "item": {"$ref": "#/definitions/Outer"}
-            },
+            "properties": {"item": {"$ref": "#/definitions/Outer"}},
         }
         result = resolver.resolve(schema)
         assert result["properties"]["item"]["properties"]["value"]["type"] == "string"
@@ -62,11 +56,7 @@ class TestInternalRefs:
 
 class TestFileRefs:
     def test_file_ref_resolved(self, resolver):
-        schema = {
-            "properties": {
-                "addr": {"$ref": "definitions/address.json"}
-            }
-        }
+        schema = {"properties": {"addr": {"$ref": "definitions/address.json"}}}
         result = resolver.resolve(schema)
         assert result["properties"]["addr"]["type"] == "object"
         assert "street" in result["properties"]["addr"]["properties"]
@@ -95,11 +85,7 @@ class TestFileRefs:
             json.dump(shared, f)
 
         resolver = RefResolver(base_path=tmp_path)
-        schema = {
-            "properties": {
-                "status": {"$ref": "shared.json#/definitions/Status"}
-            }
-        }
+        schema = {"properties": {"status": {"$ref": "shared.json#/definitions/Status"}}}
         result = resolver.resolve(schema)
         assert result["properties"]["status"]["type"] == "string"
         assert result["properties"]["status"]["enum"] == ["active", "inactive"]
@@ -120,6 +106,7 @@ class TestEdgeCases:
             "properties": {"val": {"$ref": "#/definitions/X"}},
         }
         import copy
+
         snapshot = copy.deepcopy(original)
         resolver.resolve(original)
         assert original == snapshot
@@ -168,6 +155,7 @@ class TestModelGeneration:
     @pytest.fixture(autouse=True)
     def _reset_registry(self):
         from slip_stream.core.schema.registry import SchemaRegistry
+
         SchemaRegistry.reset()
         yield
         SchemaRegistry.reset()

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Awaitable, Callable, Dict, List
 
 from slip_stream.core.context import RequestContext
 
@@ -17,18 +17,20 @@ logger = logging.getLogger(__name__)
 EventHandler = Callable[[RequestContext], Awaitable[None]]
 """Type alias for event handler functions."""
 
-LIFECYCLE_EVENTS = frozenset({
-    "pre_create",
-    "post_create",
-    "pre_get",
-    "post_get",
-    "pre_list",
-    "post_list",
-    "pre_update",
-    "post_update",
-    "pre_delete",
-    "post_delete",
-})
+LIFECYCLE_EVENTS = frozenset(
+    {
+        "pre_create",
+        "post_create",
+        "pre_get",
+        "post_get",
+        "pre_list",
+        "post_list",
+        "pre_update",
+        "post_update",
+        "pre_delete",
+        "post_delete",
+    }
+)
 """All supported lifecycle event names."""
 
 

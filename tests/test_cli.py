@@ -2,10 +2,6 @@
 
 import json
 import os
-import sys
-from pathlib import Path
-
-import pytest
 
 from slip_stream.cli import (
     _find_project_root,
@@ -19,7 +15,6 @@ from slip_stream.cli import (
     cmd_schema_validate,
     main,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -252,12 +247,14 @@ class TestSchemaValidate:
         schemas = tmp_path / "schemas"
         schemas.mkdir()
         (schemas / "good.json").write_text(
-            json.dumps({
-                "title": "Good",
-                "version": "1.0.0",
-                "type": "object",
-                "properties": {"name": {"type": "string"}},
-            })
+            json.dumps(
+                {
+                    "title": "Good",
+                    "version": "1.0.0",
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                }
+            )
         )
         monkeypatch.chdir(tmp_path)
 
@@ -349,9 +346,7 @@ class TestMain:
     def test_schema_list(self, tmp_path, monkeypatch, capsys):
         schemas = tmp_path / "schemas"
         schemas.mkdir()
-        (schemas / "x.json").write_text(
-            json.dumps({"title": "X", "version": "1.0.0"})
-        )
+        (schemas / "x.json").write_text(json.dumps({"title": "X", "version": "1.0.0"}))
         monkeypatch.chdir(tmp_path)
         code = main(["schema", "list"])
         assert code == 0
@@ -360,12 +355,14 @@ class TestMain:
         schemas = tmp_path / "schemas"
         schemas.mkdir()
         (schemas / "ok.json").write_text(
-            json.dumps({
-                "title": "Ok",
-                "version": "1.0.0",
-                "type": "object",
-                "properties": {},
-            })
+            json.dumps(
+                {
+                    "title": "Ok",
+                    "version": "1.0.0",
+                    "type": "object",
+                    "properties": {},
+                }
+            )
         )
         monkeypatch.chdir(tmp_path)
         code = main(["schema", "validate"])

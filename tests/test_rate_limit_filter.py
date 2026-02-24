@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import time
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 from starlette.datastructures import Headers
@@ -13,7 +12,6 @@ from starlette.responses import Response
 
 from slip_stream.adapters.api.filters.base import FilterContext, FilterShortCircuit
 from slip_stream.adapters.api.filters.rate_limit import RateLimitFilter
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -106,7 +104,9 @@ class TestBasicRateLimiting:
     @pytest.mark.asyncio
     async def test_limit_resets_after_window_expires(self):
         current_time = [time.monotonic()]
-        f = RateLimitFilter(default_limit=2, default_window=1, clock=lambda: current_time[0])
+        f = RateLimitFilter(
+            default_limit=2, default_window=1, clock=lambda: current_time[0]
+        )
         await _fire(f, 2)  # exhaust the budget
 
         # Wind time forward past the window
@@ -200,7 +200,9 @@ class TestResponseHeaders:
             await f.on_request(request, ctx)
             response = _make_response()
             await f.on_response(request, response, ctx)
-            assert response.headers.get("X-RateLimit-Remaining") == str(expected_remaining)
+            assert response.headers.get("X-RateLimit-Remaining") == str(
+                expected_remaining
+            )
 
     @pytest.mark.asyncio
     async def test_response_passes_through_when_path_skipped(self):
@@ -494,7 +496,9 @@ class TestAutoCleanup:
     @pytest.mark.asyncio
     async def test_cleanup_removes_expired_entries(self):
         current_time = [time.monotonic()]
-        f = RateLimitFilter(default_limit=5, default_window=1, clock=lambda: current_time[0])
+        f = RateLimitFilter(
+            default_limit=5, default_window=1, clock=lambda: current_time[0]
+        )
 
         # Populate two keys
         await _fire(f, 1, ip="1.1.1.1")
@@ -524,7 +528,9 @@ class TestAutoCleanup:
     async def test_eviction_happens_on_next_request_for_key(self):
         """Old timestamps are pruned inline when the key makes a new request."""
         current_time = [time.monotonic()]
-        f = RateLimitFilter(default_limit=2, default_window=1, clock=lambda: current_time[0])
+        f = RateLimitFilter(
+            default_limit=2, default_window=1, clock=lambda: current_time[0]
+        )
 
         await _fire(f, 2, ip="4.4.4.4")  # fill the window
 

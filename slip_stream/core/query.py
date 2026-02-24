@@ -33,8 +33,8 @@ Usage::
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -69,16 +69,18 @@ _ALL_OPS: set[str] = (
 )
 
 # Fields that are always allowed (framework-level metadata)
-_FRAMEWORK_FIELDS: set[str] = frozenset({
-    "entity_id",
-    "record_version",
-    "schema_version",
-    "created_at",
-    "updated_at",
-    "created_by",
-    "updated_by",
-    "deleted_at",
-})
+_FRAMEWORK_FIELDS: frozenset[str] = frozenset(
+    {
+        "entity_id",
+        "record_version",
+        "schema_version",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "deleted_at",
+    }
+)
 
 # Maximum nesting depth for logical operators to prevent abuse
 _MAX_DEPTH = 8
@@ -127,9 +129,7 @@ class QueryDSL:
             return {}
         return self._parse_where(where, depth=0)
 
-    def to_mongo_sort(
-        self, sort: list[dict[str, str]] | None
-    ) -> list[tuple[str, int]]:
+    def to_mongo_sort(self, sort: list[dict[str, str]] | None) -> list[tuple[str, int]]:
         """Convert a sort specification to MongoDB sort tuples.
 
         Args:
@@ -181,9 +181,7 @@ class QueryDSL:
                 parsed = self._parse_logic(key, value, depth)
                 result.update(parsed)
             elif key.startswith("_"):
-                raise QueryValidationError(
-                    f"Unknown operator at top level: {key!r}"
-                )
+                raise QueryValidationError(f"Unknown operator at top level: {key!r}")
             else:
                 # Field-level filter
                 self._validate_field(key)
@@ -248,9 +246,7 @@ class QueryDSL:
         # --- Text ---
         if op in _TEXT_OPS:
             if not isinstance(value, str):
-                raise QueryValidationError(
-                    f"Operator {op!r} requires a string value"
-                )
+                raise QueryValidationError(f"Operator {op!r} requires a string value")
             return self._text_op_to_mongo(op, value)
 
         # --- Existence ---
@@ -284,9 +280,7 @@ class QueryDSL:
 
         raise QueryValidationError(f"Unhandled text operator: {op!r}")
 
-    def _parse_logic(
-        self, op: str, value: Any, depth: int
-    ) -> dict[str, Any]:
+    def _parse_logic(self, op: str, value: Any, depth: int) -> dict[str, Any]:
         """Parse logical operators (_and, _or, _not)."""
         if op == "_and":
             if not isinstance(value, list):
@@ -317,9 +311,7 @@ class QueryDSL:
                 f"Field names must not start with '$': {field!r}"
             )
         if ".." in field:
-            raise QueryValidationError(
-                f"Invalid field path: {field!r}"
-            )
+            raise QueryValidationError(f"Invalid field path: {field!r}")
         # Allow dotted paths for nested fields (e.g., "address.city")
         # but validate each part
         parts = field.split(".")
@@ -336,9 +328,7 @@ class QueryDSL:
 # ---------------------------------------------------------------------------
 
 
-def _extract_fields_from_schema(
-    schema: dict[str, Any], prefix: str = ""
-) -> set[str]:
+def _extract_fields_from_schema(schema: dict[str, Any], prefix: str = "") -> set[str]:
     """Extract filterable field names from a JSON Schema."""
     fields: set[str] = set()
     properties = schema.get("properties", {})
@@ -367,7 +357,9 @@ def _extract_fields_from_schema(
 # ---------------------------------------------------------------------------
 
 
-def parse_sort_param(sort_str: str | None, allowed_fields: set[str] | None = None) -> list[dict[str, str]]:
+def parse_sort_param(
+    sort_str: str | None, allowed_fields: set[str] | None = None
+) -> list[dict[str, str]]:
     """Parse a REST sort string like ``"-created_at,name"`` into sort dicts.
 
     Uses JSON:API convention: ``-`` prefix means descending.
@@ -394,7 +386,11 @@ def parse_sort_param(sort_str: str | None, allowed_fields: set[str] | None = Non
             field = part
             direction = "asc"
 
-        if allowed_fields and field not in allowed_fields and field not in _FRAMEWORK_FIELDS:
+        if (
+            allowed_fields
+            and field not in allowed_fields
+            and field not in _FRAMEWORK_FIELDS
+        ):
             raise QueryValidationError(
                 f"Cannot sort by {field!r}. Allowed: {sorted(allowed_fields | _FRAMEWORK_FIELDS)}"
             )

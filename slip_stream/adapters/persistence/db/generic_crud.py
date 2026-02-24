@@ -84,9 +84,16 @@ class VersionedMongoCRUD(Generic[DocumentModelType, CreateModelType, UpdateModel
 
         # Remove BaseDocument audit fields to prevent conflicts
         _audit_fields = {
-            "id", "entity_id", "schema_version", "record_version",
-            "created_at", "updated_at", "deleted_at",
-            "created_by", "updated_by", "deleted_by",
+            "id",
+            "entity_id",
+            "schema_version",
+            "record_version",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "created_by",
+            "updated_by",
+            "deleted_by",
         }
         for field_name in _audit_fields:
             document_data_dict.pop(field_name, None)
@@ -112,7 +119,9 @@ class VersionedMongoCRUD(Generic[DocumentModelType, CreateModelType, UpdateModel
         insert_dict = self._prepare_for_insert(insert_dict)
 
         result = await self.db[self.collection_name].insert_one(insert_dict)
-        logger.debug("Inserted into %s: _id=%s", self.collection_name, result.inserted_id)
+        logger.debug(
+            "Inserted into %s: _id=%s", self.collection_name, result.inserted_id
+        )
 
         created_doc_from_db = await self.db[self.collection_name].find_one(
             {"_id": result.inserted_id}
@@ -121,7 +130,8 @@ class VersionedMongoCRUD(Generic[DocumentModelType, CreateModelType, UpdateModel
         if not created_doc_from_db:
             logger.error(
                 "Failed to retrieve document after creation: collection=%s _id=%s",
-                self.collection_name, result.inserted_id,
+                self.collection_name,
+                result.inserted_id,
             )
             raise RuntimeError(
                 f"Failed to retrieve document with _id {str(result.inserted_id)} "
@@ -206,12 +216,14 @@ class VersionedMongoCRUD(Generic[DocumentModelType, CreateModelType, UpdateModel
             pipeline.append({"$match": processed})
 
         pipeline.append({"$sort": {"entity_id": 1, "record_version": -1}})
-        pipeline.append({
-            "$group": {
-                "_id": "$entity_id",
-                "latest_version_doc": {"$first": "$$ROOT"},
+        pipeline.append(
+            {
+                "$group": {
+                    "_id": "$entity_id",
+                    "latest_version_doc": {"$first": "$$ROOT"},
+                }
             }
-        })
+        )
         pipeline.append({"$replaceRoot": {"newRoot": "$latest_version_doc"}})
         pipeline.append({"$match": {"deleted_at": None}})
         pipeline.append({"$count": "total"})
@@ -261,9 +273,17 @@ class VersionedMongoCRUD(Generic[DocumentModelType, CreateModelType, UpdateModel
         del new_version_data_dict["_id"]
 
         protected_fields = {
-            "id", "_id", "entity_id", "created_at", "created_by",
-            "deleted_at", "deleted_by", "record_version", "schema_version",
-            "updated_at", "updated_by",
+            "id",
+            "_id",
+            "entity_id",
+            "created_at",
+            "created_by",
+            "deleted_at",
+            "deleted_by",
+            "record_version",
+            "schema_version",
+            "updated_at",
+            "updated_by",
         }
         for key, value in update_data_dict.items():
             if key not in protected_fields and value is not None:

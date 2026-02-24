@@ -1,7 +1,5 @@
 """Tests for the SchemaRegistry."""
 
-from pathlib import Path
-
 import pytest
 from pydantic import BaseModel
 

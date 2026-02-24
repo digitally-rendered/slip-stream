@@ -12,8 +12,6 @@ from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
 from slip_stream.adapters.api.endpoint_factory import EndpointFactory
-from slip_stream.core.schema.registry import SchemaRegistry
-
 
 _db_holder: Dict[str, Any] = {}
 

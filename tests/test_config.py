@@ -1,7 +1,5 @@
 """Tests for SlipStreamConfig YAML configuration loader."""
 
-from pathlib import Path
-
 import pytest
 import yaml
 
@@ -114,7 +112,9 @@ class TestSlipStreamConfigFromFile:
     def test_load_yaml_file(self, tmp_path):
         config_data = {
             "app": {"api_prefix": "/api/v1"},
-            "databases": {"mongo": {"uri": "mongodb://localhost:27017", "name": "test"}},
+            "databases": {
+                "mongo": {"uri": "mongodb://localhost:27017", "name": "test"}
+            },
             "storage": {"default": "mongo"},
         }
         config_file = tmp_path / "slip-stream.yml"
@@ -162,7 +162,11 @@ class TestSlipStreamConfigFromFile:
                 "schemas": {"widget": "sql", "order": "sql"},
             },
             "filters": [
-                {"type": "rate_limit", "requests_per_window": 100, "window_seconds": 60},
+                {
+                    "type": "rate_limit",
+                    "requests_per_window": 100,
+                    "window_seconds": 60,
+                },
                 {"type": "auth"},
             ],
         }

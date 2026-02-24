@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from slip_stream.adapters.api.filters.auth import AuthFilter
-from slip_stream.adapters.api.filters.base import FilterContext, FilterShortCircuit
 from slip_stream.adapters.api.filters.chain import FilterChain
 from slip_stream.adapters.api.filters.middleware import FilterChainMiddleware
 
