@@ -105,6 +105,8 @@ class SlipStream:
         storage_map: Optional[Dict[str, str]] = None,
         sql_engine: Optional[Any] = None,
         config: Optional[SlipStreamConfig] = None,
+        telemetry: bool = False,
+        tracer_provider: Optional[Any] = None,
     ) -> None:
         # Merge config values (constructor args override config file values)
         cfg = config
@@ -163,6 +165,11 @@ class SlipStream:
 
         # Resolve SQL URL from config (for auto-creating engine)
         self._sql_url = cfg.sql_url if cfg else None
+
+        # Telemetry
+        self._telemetry = telemetry
+        self._tracer_provider = tracer_provider
+        self._instrumentor: Optional[Any] = None
 
         # Auto-create EventBus when registry is provided but no bus given
         if registry is not None and self._event_bus is None:
@@ -327,6 +334,25 @@ class SlipStream:
             )  # guaranteed by __init__ when registry is set
             self._registry.apply(self._container, self._event_bus)
             logger.info("Registry applied: handlers and hooks merged")
+
+        # Wire OpenTelemetry instrumentation
+        if self._telemetry:
+            try:
+                from slip_stream.telemetry import SlipStreamInstrumentor
+
+                instrumentor = SlipStreamInstrumentor(
+                    tracer_provider=self._tracer_provider
+                )
+                instrumentor.instrument_operation_executor()
+                if self._event_bus is not None:
+                    instrumentor.instrument_event_bus(self._event_bus)
+                self._instrumentor = instrumentor
+                logger.info("OpenTelemetry instrumentation enabled")
+            except ImportError:
+                logger.warning(
+                    "telemetry=True but opentelemetry not installed. "
+                    "Install it with: pip install slip-stream[telemetry]"
+                )
 
         # Build per-schema get_db dependencies
         def _make_sql_get_db(session_factory: Any) -> Callable:

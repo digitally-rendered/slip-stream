@@ -65,18 +65,29 @@ class ResponseEnvelopeFilter(FilterBase):
             meta["schema_version"] = schema_version
 
         if isinstance(data, list) and self.include_pagination:
-            skip = int(request.query_params.get("skip", "0"))
-            limit = int(request.query_params.get("limit", "100"))
             count = len(data)
-            pagination: Dict[str, Any] = {
-                "skip": skip,
-                "limit": limit,
-                "count": count,
-            }
-            total_count = context.extras.get("total_count")
-            if total_count is not None:
-                pagination["total_count"] = total_count
-                pagination["has_more"] = (skip + count) < total_count
+            if context.extras.get("pagination_mode") == "cursor":
+                page_info = context.extras.get("page_info", {})
+                pagination: Dict[str, Any] = {
+                    "mode": "cursor",
+                    "count": count,
+                    "has_next_page": page_info.get("has_next_page", False),
+                    "has_previous_page": page_info.get("has_previous_page", False),
+                    "start_cursor": page_info.get("start_cursor"),
+                    "end_cursor": page_info.get("end_cursor"),
+                }
+            else:
+                skip = int(request.query_params.get("skip", "0"))
+                limit = int(request.query_params.get("limit", "100"))
+                pagination = {
+                    "skip": skip,
+                    "limit": limit,
+                    "count": count,
+                }
+                total_count = context.extras.get("total_count")
+                if total_count is not None:
+                    pagination["total_count"] = total_count
+                    pagination["has_more"] = (skip + count) < total_count
             meta["pagination"] = pagination
 
         envelope = {"data": data, "meta": meta}

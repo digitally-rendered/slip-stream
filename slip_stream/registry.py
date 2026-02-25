@@ -54,7 +54,18 @@ logger = logging.getLogger(__name__)
 EventHandler = Callable[["RequestContext"], Awaitable[None]]
 """Type alias for event/hook handler functions."""
 
-_VALID_OPERATIONS = frozenset({"create", "get", "list", "update", "delete"})
+_VALID_OPERATIONS = frozenset(
+    {
+        "create",
+        "get",
+        "list",
+        "update",
+        "delete",
+        "bulk_create",
+        "bulk_update",
+        "bulk_delete",
+    }
+)
 """All valid CRUD operation names."""
 
 _VALID_WHENS = frozenset({"before", "after"})

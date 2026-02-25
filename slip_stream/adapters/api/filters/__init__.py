@@ -11,6 +11,7 @@ from slip_stream.adapters.api.filters.base import (
 )
 from slip_stream.adapters.api.filters.chain import FilterChain
 from slip_stream.adapters.api.filters.envelope import ResponseEnvelopeFilter
+from slip_stream.adapters.api.filters.etag import ETagFilter
 from slip_stream.adapters.api.filters.middleware import FilterChainMiddleware
 from slip_stream.adapters.api.filters.projection import FieldProjectionFilter
 
@@ -22,4 +23,5 @@ __all__ = [
     "FilterChainMiddleware",
     "ResponseEnvelopeFilter",
     "FieldProjectionFilter",
+    "ETagFilter",
 ]

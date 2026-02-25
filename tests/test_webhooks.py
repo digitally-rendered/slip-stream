@@ -278,3 +278,199 @@ class TestPayloadBuilding:
             channel="rest",
         )
         assert payload["changes"] == {}
+
+
+# ---------------------------------------------------------------------------
+# HTTP delivery path (real network mocked via httpx)
+# ---------------------------------------------------------------------------
+
+
+class TestHttpDelivery:
+
+    @pytest.mark.asyncio
+    async def test_http_delivery_success(self):
+        """Mock httpx.AsyncClient.post — verify correct URL, headers, and body."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        wh = WebhookDispatcher(in_memory=False)
+        reg = wh.add(url="https://example.com/hook", schema_name="widget")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        payload = {
+            "event": "create",
+            "schema_name": "widget",
+            "entity_id": "ent-1",
+            "changes": {"name": "Test"},
+            "user_id": "user-1",
+            "channel": "rest",
+            "timestamp": 0,
+        }
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            delivery = await wh._deliver(reg, payload)
+
+        assert delivery.success is True
+        assert delivery.status_code == 200
+        assert delivery.webhook_url == "https://example.com/hook"
+        assert delivery.event == "create"
+
+        mock_client.post.assert_called_once()
+        call_kwargs = mock_client.post.call_args
+        assert call_kwargs[0][0] == "https://example.com/hook"
+        sent_headers = call_kwargs[1]["headers"]
+        assert sent_headers["Content-Type"] == "application/json"
+        assert sent_headers["X-Webhook-Event"] == "create"
+
+    @pytest.mark.asyncio
+    async def test_http_delivery_with_hmac_signature(self):
+        """Verify X-Webhook-Signature header contains correct HMAC-SHA256."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        wh = WebhookDispatcher(in_memory=False)
+        reg = wh.add(
+            url="https://example.com/hook",
+            schema_name="widget",
+            secret="my-secret",
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        payload = {
+            "event": "create",
+            "schema_name": "widget",
+            "entity_id": "ent-1",
+            "changes": {},
+            "user_id": None,
+            "channel": "rest",
+            "timestamp": 0,
+        }
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            delivery = await wh._deliver(reg, payload)
+
+        assert delivery.success is True
+        call_kwargs = mock_client.post.call_args
+        sent_headers = call_kwargs[1]["headers"]
+        assert "X-Webhook-Signature" in sent_headers
+
+        # Verify the signature value matches the expected HMAC
+        import json
+
+        payload_bytes = json.dumps(payload, default=str).encode("utf-8")
+        expected_sig = hmac.new(b"my-secret", payload_bytes, hashlib.sha256).hexdigest()
+        assert sent_headers["X-Webhook-Signature"] == f"sha256={expected_sig}"
+
+    @pytest.mark.asyncio
+    async def test_http_delivery_retry_on_failure(self):
+        """Mock post to raise an exception, verify retries up to max_retries."""
+        from unittest.mock import AsyncMock, patch
+
+        wh = WebhookDispatcher(in_memory=False)
+        reg = wh.add(
+            url="https://example.com/hook",
+            schema_name="widget",
+            max_retries=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=ConnectionError("Network error"))
+
+        payload = {
+            "event": "create",
+            "schema_name": "widget",
+            "entity_id": "ent-1",
+            "changes": {},
+            "user_id": None,
+            "channel": "rest",
+            "timestamp": 0,
+        }
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            delivery = await wh._deliver(reg, payload)
+
+        # Should have tried 3 times
+        assert mock_client.post.call_count == 3
+        # Final delivery should be a failure record
+        assert delivery.success is False
+        assert delivery.error is not None
+
+    @pytest.mark.asyncio
+    async def test_http_delivery_non_2xx_marks_failed(self):
+        """A 500 response records a failed delivery and exhausts retries."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        wh = WebhookDispatcher(in_memory=False)
+        reg = wh.add(
+            url="https://example.com/hook",
+            schema_name="widget",
+            max_retries=2,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        payload = {
+            "event": "update",
+            "schema_name": "widget",
+            "entity_id": "ent-2",
+            "changes": {},
+            "user_id": None,
+            "channel": "rest",
+            "timestamp": 0,
+        }
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            delivery = await wh._deliver(reg, payload)
+
+        # Two attempts at 500 responses, then a final failure delivery
+        assert mock_client.post.call_count == 2
+        # The failure delivery appended last has no status_code (from the
+        # exhausted-retry path), while each 500 attempt also appended a delivery
+        all_deliveries = wh._deliveries
+        # At least one delivery was recorded
+        assert len(all_deliveries) >= 1
+        # The last delivery is the failure sentinel
+        assert delivery.success is False
+
+    @pytest.mark.asyncio
+    async def test_deliver_dict_payload(self):
+        """When ctx.data is a plain dict, changes should be captured."""
+        wh = WebhookDispatcher(in_memory=True)
+        wh.add(url="https://example.com/hook", schema_name="widget")
+
+        # Simulate a context where data is a plain dict (not a Pydantic model)
+        ctx = _make_ctx(
+            operation="create",
+            schema_name="widget",
+            data={"name": "From Dict", "color": "red"},
+            result=_FakeEntity(entity_id="ent-dict"),
+        )
+
+        bus = EventBus()
+        wh.register(bus)
+        await bus.emit("post_create", ctx)
+
+        assert len(wh.deliveries) == 1
+        d = wh.deliveries[0]
+        assert d.success is True
+        assert d.entity_id == "ent-dict"

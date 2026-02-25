@@ -245,3 +245,92 @@ class TestPaginationTotalCount:
         pagination = body["meta"]["pagination"]
         assert "total_count" not in pagination
         assert "has_more" not in pagination
+
+
+class TestCursorPaginationEnvelope:
+    """Tests for cursor-mode pagination metadata in the envelope filter."""
+
+    @pytest.mark.asyncio
+    async def test_cursor_mode_emits_page_info(self):
+        """When pagination_mode is 'cursor', envelope uses page_info keys."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="first=5")
+        context = FilterContext()
+        context.extras["pagination_mode"] = "cursor"
+        context.extras["page_info"] = {
+            "has_next_page": True,
+            "has_previous_page": False,
+            "start_cursor": "abc",
+            "end_cursor": "xyz",
+        }
+        await f.on_request(request, context)
+
+        items = [{"id": i} for i in range(5)]
+        response = _make_response(items)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["mode"] == "cursor"
+        assert pagination["count"] == 5
+        assert pagination["has_next_page"] is True
+        assert pagination["has_previous_page"] is False
+        assert pagination["start_cursor"] == "abc"
+        assert pagination["end_cursor"] == "xyz"
+
+    @pytest.mark.asyncio
+    async def test_cursor_mode_empty_page_info_defaults(self):
+        """cursor mode with no page_info in extras defaults to False/None values."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        context.extras["pagination_mode"] = "cursor"
+        # page_info intentionally absent
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["mode"] == "cursor"
+        assert pagination["has_next_page"] is False
+        assert pagination["has_previous_page"] is False
+        assert pagination["start_cursor"] is None
+        assert pagination["end_cursor"] is None
+
+    @pytest.mark.asyncio
+    async def test_cursor_mode_does_not_include_skip_limit(self):
+        """cursor mode pagination block has no skip or limit keys."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="first=10")
+        context = FilterContext()
+        context.extras["pagination_mode"] = "cursor"
+        context.extras["page_info"] = {}
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}, {"id": 2}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert "skip" not in pagination
+        assert "limit" not in pagination
+
+    @pytest.mark.asyncio
+    async def test_offset_mode_unaffected_by_cursor_flag_absence(self):
+        """When pagination_mode is absent (offset mode), existing offset logic applies."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="skip=5&limit=10")
+        context = FilterContext()
+        # no pagination_mode set in extras → offset mode
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["skip"] == 5
+        assert pagination["limit"] == 10
+        assert "mode" not in pagination

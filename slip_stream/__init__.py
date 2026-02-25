@@ -25,6 +25,7 @@ from slip_stream.adapters.api.filters.content_negotiation import (
     ContentNegotiationFilter,
 )
 from slip_stream.adapters.api.filters.envelope import ResponseEnvelopeFilter
+from slip_stream.adapters.api.filters.etag import ETagFilter
 from slip_stream.adapters.api.filters.middleware import FilterChainMiddleware
 from slip_stream.adapters.api.filters.projection import FieldProjectionFilter
 from slip_stream.adapters.api.filters.schema_version import SchemaVersionFilter
@@ -139,6 +140,7 @@ __all__ = [
     "ContentNegotiationFilter",
     "AuthFilter",
     "ResponseEnvelopeFilter",
+    "ETagFilter",
     "FieldProjectionFilter",
     "SchemaVersionFilter",
     # Context & Events
@@ -221,6 +223,14 @@ __all__ = [
     "configure_logging",
 ]
 
+try:
+    from slip_stream.adapters.api.filters.telemetry import TelemetryFilter
+    from slip_stream.telemetry import SlipStreamInstrumentor
+
+    _has_telemetry = True
+except ImportError:
+    _has_telemetry = False
+
 # Conditionally include optional-dependency exports
 if _has_graphql:
     __all__.append("GraphQLFactory")
@@ -228,3 +238,5 @@ if _has_http_storage:
     __all__.append("HttpSchemaStorage")
 if _has_sql:
     __all__.extend(["SQLRepository", "build_table_from_schema", "SQLRepositoryFactory"])
+if _has_telemetry:
+    __all__.extend(["SlipStreamInstrumentor", "TelemetryFilter"])

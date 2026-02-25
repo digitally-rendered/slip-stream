@@ -29,6 +29,12 @@ LIFECYCLE_EVENTS = frozenset(
         "post_update",
         "pre_delete",
         "post_delete",
+        "pre_bulk_create",
+        "post_bulk_create",
+        "pre_bulk_update",
+        "post_bulk_update",
+        "pre_bulk_delete",
+        "post_bulk_delete",
     }
 )
 """All supported lifecycle event names."""

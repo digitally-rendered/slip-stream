@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import (
     Any,
     Dict,
+    List,
     Literal,
     Optional,
     Protocol,
@@ -23,7 +24,16 @@ from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.responses import Response
 
-OperationType = Literal["create", "get", "list", "update", "delete"]
+OperationType = Literal[
+    "create",
+    "get",
+    "list",
+    "update",
+    "delete",
+    "bulk_create",
+    "bulk_update",
+    "bulk_delete",
+]
 
 
 @dataclass
@@ -79,6 +89,20 @@ class RequestContext:
 
     # Transport channel (set by the transport layer: "rest", "graphql", etc.)
     channel: str = "rest"
+
+    # Cursor pagination parameters
+    after_cursor: Optional[str] = None
+    before_cursor: Optional[str] = None
+    first: Optional[int] = None
+    last: Optional[int] = None
+    pagination_mode: str = "offset"
+    page_info: Optional[Dict[str, Any]] = None
+
+    # Bulk operation fields
+    bulk_items: Optional[List[Any]] = None
+    bulk_results: Optional[List[Any]] = None
+    bulk_index: Optional[int] = None
+    atomic: bool = False
 
     # Extension point
     extras: Dict[str, Any] = field(default_factory=DottedDict)

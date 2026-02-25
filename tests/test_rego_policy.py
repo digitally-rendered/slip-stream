@@ -364,3 +364,355 @@ class TestRegoPolicyFilter:
         engine = InlinePolicy()
         f = RegoPolicyFilter(engine=engine)
         assert f.order == 3
+
+
+# ---------------------------------------------------------------------------
+# OpaRemotePolicy — evaluate_raw and _get_client
+# ---------------------------------------------------------------------------
+
+
+class TestOpaRemotePolicyExtended:
+
+    def _mock_opa_response(self, data):
+        resp = MagicMock()
+        resp.json.return_value = data
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_returns_full_dict(self):
+        engine = OpaRemotePolicy(url="http://opa:8181")
+
+        payload = {"result": {"allow": True, "reason": "admin role"}}
+        mock_resp = self._mock_opa_response(payload)
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        engine._client = mock_client
+
+        result = await engine.evaluate_raw("authz/allow", {"user": "admin"})
+
+        assert result == payload
+        assert result["result"]["allow"] is True
+        assert result["result"]["reason"] == "admin role"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_uses_default_policy_when_none(self):
+        engine = OpaRemotePolicy(url="http://opa:8181", default_policy="default/check")
+
+        mock_resp = self._mock_opa_response({"result": True})
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        engine._client = mock_client
+
+        await engine.evaluate_raw(None, {})
+
+        mock_client.post.assert_called_once_with(
+            "http://opa:8181/v1/data/default/check",
+            json={"input": {}},
+        )
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_uses_empty_input_when_none(self):
+        engine = OpaRemotePolicy(url="http://opa:8181")
+
+        mock_resp = self._mock_opa_response({"result": False})
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        engine._client = mock_client
+
+        await engine.evaluate_raw("authz/allow", None)
+
+        mock_client.post.assert_called_once_with(
+            "http://opa:8181/v1/data/authz/allow",
+            json={"input": {}},
+        )
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_raises_policy_evaluation_error_on_exception(self):
+        engine = OpaRemotePolicy(url="http://opa:8181")
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=RuntimeError("network error"))
+        engine._client = mock_client
+
+        with pytest.raises(PolicyEvaluationError, match="network error"):
+            await engine.evaluate_raw("authz/allow", {})
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_reraises_policy_evaluation_error_unchanged(self):
+        engine = OpaRemotePolicy(url="http://opa:8181")
+
+        mock_client = AsyncMock()
+        original_error = PolicyEvaluationError("already wrapped")
+        mock_client.post = AsyncMock(side_effect=original_error)
+        engine._client = mock_client
+
+        with pytest.raises(PolicyEvaluationError, match="already wrapped"):
+            await engine.evaluate_raw("authz/allow", {})
+
+    @pytest.mark.asyncio
+    async def test_get_client_creates_httpx_client_when_none(self, monkeypatch):
+        engine = OpaRemotePolicy(url="http://opa:8181", timeout=3.0)
+
+        mock_client_instance = AsyncMock()
+        mock_httpx = MagicMock()
+        mock_httpx.AsyncClient.return_value = mock_client_instance
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "httpx", mock_httpx)
+
+        # Clear any cached client
+        engine._client = None
+        client = await engine._get_client()
+
+        mock_httpx.AsyncClient.assert_called_once_with(timeout=3.0)
+        assert client is mock_client_instance
+
+    @pytest.mark.asyncio
+    async def test_get_client_reuses_existing_client(self):
+        engine = OpaRemotePolicy(url="http://opa:8181")
+        existing_client = AsyncMock()
+        engine._client = existing_client
+
+        client = await engine._get_client()
+
+        assert client is existing_client
+
+    @pytest.mark.asyncio
+    async def test_close_with_no_client_is_noop(self):
+        engine = OpaRemotePolicy(url="http://opa:8181")
+        assert engine._client is None
+        # Should not raise
+        await engine.close()
+        assert engine._client is None
+
+    @pytest.mark.asyncio
+    async def test_evaluate_non_bool_result_cast_to_bool(self):
+        engine = OpaRemotePolicy(url="http://opa:8181")
+
+        # A truthy integer result should be cast to True
+        mock_resp = self._mock_opa_response({"result": 1})
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        engine._client = mock_client
+
+        result = await engine.evaluate("authz/allow", {})
+        assert result is True
+
+
+# ---------------------------------------------------------------------------
+# LocalRegoPolicy — mocked regorus
+# ---------------------------------------------------------------------------
+
+
+class TestLocalRegoPolicy:
+    """Tests for LocalRegoPolicy using a mocked regorus module."""
+
+    def _make_mock_regorus(self, eval_return_value=None):
+        """Build a mock regorus module with an Engine class."""
+        mock_engine_instance = MagicMock()
+
+        if eval_return_value is None:
+            eval_return_value = (
+                '[{"expressions": [{"value": true, "text": "data.authz.allow"}]}]'
+            )
+        mock_engine_instance.eval_query.return_value = eval_return_value
+
+        mock_regorus = MagicMock()
+        mock_regorus.Engine.return_value = mock_engine_instance
+        return mock_regorus, mock_engine_instance
+
+    @pytest.mark.asyncio
+    async def test_evaluate_returns_true_when_policy_allows(self, monkeypatch):
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        mock_regorus, _ = self._make_mock_regorus(
+            '[{"expressions": [{"value": true, "text": "data.authz.allow"}]}]'
+        )
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        result = await engine.evaluate("authz/allow", {"user": "admin"})
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_evaluate_returns_false_when_policy_denies(self, monkeypatch):
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        mock_regorus, _ = self._make_mock_regorus(
+            '[{"expressions": [{"value": false, "text": "data.authz.allow"}]}]'
+        )
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        result = await engine.evaluate("authz/allow", {})
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_returns_dict_with_result_key(self, monkeypatch):
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        mock_regorus, _ = self._make_mock_regorus(
+            '[{"expressions": [{"value": true, "text": "data.authz.allow"}]}]'
+        )
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        result = await engine.evaluate_raw("authz/allow", {"role": "admin"})
+        assert isinstance(result, dict)
+        assert "result" in result
+        assert result["result"] is True
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_already_has_result_key(self, monkeypatch):
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        # regorus returns a dict with "result" key directly
+        mock_regorus, mock_engine_instance = self._make_mock_regorus()
+        import json as _json
+
+        mock_engine_instance.eval_query.return_value = _json.dumps({"result": True})
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        result = await engine.evaluate_raw("authz/allow", {})
+        assert result == {"result": True}
+
+    @pytest.mark.asyncio
+    async def test_evaluate_raw_raises_on_engine_error(self, monkeypatch):
+        from slip_stream.core.policy import LocalRegoPolicy, PolicyEvaluationError
+
+        mock_regorus, mock_engine_instance = self._make_mock_regorus()
+        mock_engine_instance.eval_query.side_effect = RuntimeError("eval failed")
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        with pytest.raises(PolicyEvaluationError, match="eval failed"):
+            await engine.evaluate_raw("authz/allow", {})
+
+    @pytest.mark.asyncio
+    async def test_ensure_engine_not_installed_raises_import_error(self, monkeypatch):
+        import sys
+
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        monkeypatch.setitem(sys.modules, "regorus", None)
+
+        engine = LocalRegoPolicy()
+        # Force re-creation by clearing cached engine
+        engine._engine = None
+
+        with pytest.raises(ImportError, match="regorus is required"):
+            engine._ensure_engine()
+
+    @pytest.mark.asyncio
+    async def test_add_policy_calls_engine(self, monkeypatch):
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        mock_regorus, mock_engine_instance = self._make_mock_regorus()
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        # Initialize engine first
+        engine._ensure_engine()
+
+        engine.add_policy("package authz\nallow = true", filename="test.rego")
+        mock_engine_instance.add_policy.assert_called_once_with(
+            "test.rego", "package authz\nallow = true"
+        )
+
+    @pytest.mark.asyncio
+    async def test_add_data_calls_engine(self, monkeypatch):
+        import json as _json
+
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        mock_regorus, mock_engine_instance = self._make_mock_regorus()
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        engine._ensure_engine()
+
+        data = {"roles": ["admin", "viewer"]}
+        engine.add_data(data)
+        mock_engine_instance.add_data_json.assert_called_with(_json.dumps(data))
+
+    @pytest.mark.asyncio
+    async def test_loads_policy_files_from_dir(self, monkeypatch, tmp_path):
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        # Create fake .rego files
+        (tmp_path / "authz.rego").write_text("package authz\nallow = true")
+        (tmp_path / "widget.rego").write_text("package widget\ncreate = true")
+
+        mock_regorus, mock_engine_instance = self._make_mock_regorus()
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy(policy_dir=tmp_path)
+        engine._ensure_engine()
+
+        # Two .rego files should have been loaded
+        assert mock_engine_instance.add_policy_from_file.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_loads_initial_data(self, monkeypatch):
+        import json as _json
+
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        mock_regorus, mock_engine_instance = self._make_mock_regorus()
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        initial_data = {"org": "acme"}
+        engine = LocalRegoPolicy(data=initial_data)
+        engine._ensure_engine()
+
+        mock_engine_instance.add_data_json.assert_called_once_with(
+            _json.dumps(initial_data)
+        )
+
+    @pytest.mark.asyncio
+    async def test_engine_reused_on_second_call(self, monkeypatch):
+        from slip_stream.core.policy import LocalRegoPolicy
+
+        mock_regorus, mock_engine_instance = self._make_mock_regorus()
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "regorus", mock_regorus)
+
+        engine = LocalRegoPolicy()
+        e1 = engine._ensure_engine()
+        e2 = engine._ensure_engine()
+
+        assert e1 is e2
+        # Engine() should only have been constructed once
+        mock_regorus.Engine.assert_called_once()

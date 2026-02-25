@@ -16,9 +16,11 @@ from fastapi.params import Body
 
 from slip_stream.adapters.api.dependencies import default_get_current_user
 from slip_stream.adapters.persistence.db.crud_factory import CRUDFactory
+from slip_stream.core.bulk import BulkOperationResult
 from slip_stream.core.context import RequestContext
 from slip_stream.core.events import EventBus, HookError
 from slip_stream.core.operation import OperationExecutor
+from slip_stream.core.pagination import detect_pagination_mode
 from slip_stream.core.query import QueryDSL, QueryValidationError, parse_sort_param
 from slip_stream.core.schema.registry import SchemaRegistry
 
@@ -445,6 +447,7 @@ class EndpointFactory:
 
         executor = OperationExecutor(registration, event_bus)
         router = APIRouter()
+        _BULK_MAX = 100
 
         @router.post(
             "/",
@@ -470,6 +473,110 @@ class EndpointFactory:
             )
             try:
                 return await executor.execute_create(ctx)
+            except HookError as e:
+                raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+
+        # Bulk endpoints must be registered BEFORE /{entity_id} routes so that
+        # the literal path segment "bulk" is not captured by the path parameter.
+
+        @router.post(
+            "/bulk",
+            response_model=BulkOperationResult,
+            status_code=status.HTTP_200_OK,
+            summary=f"Bulk create {schema_name}s",
+            tags=list(resolved_tags),
+        )
+        async def bulk_create(
+            request: Request,
+            data: List[create_model] = Body(...),  # type: ignore[valid-type, assignment]
+            atomic: bool = Query(False, description="All-or-nothing mode"),
+            db: Any = Depends(get_db),
+            current_user: Dict[str, Any] = Depends(_get_current_user),
+        ) -> Any:
+            if len(data) > _BULK_MAX:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Bulk operations limited to {_BULK_MAX} items",
+                )
+            ctx = RequestContext.from_request(
+                request=request,
+                operation="bulk_create",
+                schema_name=schema_name,
+                current_user=current_user,
+                db=db,
+                bulk_items=data,
+                atomic=atomic,
+            )
+            try:
+                return await executor.execute_bulk_create(ctx)
+            except HookError as e:
+                raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+
+        @router.patch(
+            "/bulk",
+            response_model=BulkOperationResult,
+            status_code=status.HTTP_200_OK,
+            summary=f"Bulk update {schema_name}s",
+            tags=list(resolved_tags),
+        )
+        async def bulk_update(
+            request: Request,
+            data: List[Dict[str, Any]] = Body(  # type: ignore[assignment]
+                ..., description="Each item must have entity_id"
+            ),
+            atomic: bool = Query(False, description="All-or-nothing mode"),
+            db: Any = Depends(get_db),
+            current_user: Dict[str, Any] = Depends(_get_current_user),
+        ) -> Any:
+            if len(data) > _BULK_MAX:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Bulk operations limited to {_BULK_MAX} items",
+                )
+            ctx = RequestContext.from_request(
+                request=request,
+                operation="bulk_update",
+                schema_name=schema_name,
+                current_user=current_user,
+                db=db,
+                bulk_items=data,
+                atomic=atomic,
+            )
+            try:
+                return await executor.execute_bulk_update(ctx)
+            except HookError as e:
+                raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+
+        @router.delete(
+            "/bulk",
+            response_model=BulkOperationResult,
+            status_code=status.HTTP_200_OK,
+            summary=f"Bulk delete {schema_name}s",
+            tags=list(resolved_tags),
+        )
+        async def bulk_delete(
+            request: Request,
+            data: List[str] = Body(..., description="List of entity_id UUIDs"),  # type: ignore[assignment]
+            atomic: bool = Query(False, description="All-or-nothing mode"),
+            db: Any = Depends(get_db),
+            current_user: Dict[str, Any] = Depends(_get_current_user),
+        ) -> Any:
+            if len(data) > _BULK_MAX:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Bulk operations limited to {_BULK_MAX} items",
+                )
+            ctx = RequestContext.from_request(
+                request=request,
+                operation="bulk_delete",
+                schema_name=schema_name,
+                current_user=current_user,
+                db=db,
+                bulk_items=data,
+                atomic=atomic,
+            )
+            try:
+                return await executor.execute_bulk_delete(ctx)
             except HookError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
@@ -543,9 +650,29 @@ class EndpointFactory:
                     "Example: -created_at,name"
                 ),
             ),
+            after: Optional[str] = Query(
+                None, description="Cursor for forward pagination"
+            ),
+            before: Optional[str] = Query(
+                None, description="Cursor for backward pagination"
+            ),
+            first: Optional[int] = Query(
+                None, ge=1, le=1000, description="Number of items after cursor"
+            ),
+            last: Optional[int] = Query(
+                None, ge=1, le=1000, description="Number of items before cursor"
+            ),
             db: Any = Depends(get_db),
             current_user: Dict[str, Any] = Depends(_get_current_user),
         ) -> Any:
+            # Detect pagination mode (raises 400 on conflicting params)
+            try:
+                mode = detect_pagination_mode(
+                    after, before, first, last, skip if skip > 0 else None
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+
             # Parse where clause
             filter_criteria = None
             if where:
@@ -570,6 +697,7 @@ class EndpointFactory:
                 except QueryValidationError as e:
                     raise HTTPException(status_code=400, detail=str(e)) from e
 
+            effective_limit = first or last or limit
             ctx = RequestContext.from_request(
                 request=request,
                 operation="list",
@@ -577,19 +705,31 @@ class EndpointFactory:
                 current_user=current_user,
                 db=db,
                 skip=skip,
-                limit=limit,
+                limit=effective_limit,
                 filter_criteria=filter_criteria,
                 sort_by=sort_by,
                 sort_order=sort_order,
+                after_cursor=after,
+                before_cursor=before,
+                first=first,
+                last=last if last else None,
+                pagination_mode=mode.value,
             )
             try:
                 result = await executor.execute_list(ctx)
             except HookError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+            except ValueError as e:
+                # Raised by decode_cursor when an invalid cursor token is supplied
+                raise HTTPException(status_code=400, detail=str(e)) from e
 
-            # Propagate total_count to filter context for envelope filter
-            if ctx.total_count is not None:
-                filter_ctx = getattr(request.state, "filter_context", None)
+            # Propagate pagination metadata to filter context for envelope filter
+            filter_ctx = getattr(request.state, "filter_context", None)
+            if ctx.pagination_mode == "cursor" and ctx.page_info:
+                if filter_ctx is not None:
+                    filter_ctx.extras["page_info"] = ctx.page_info
+                    filter_ctx.extras["pagination_mode"] = "cursor"
+            elif ctx.total_count is not None:
                 if filter_ctx is not None:
                     filter_ctx.extras["total_count"] = ctx.total_count
 

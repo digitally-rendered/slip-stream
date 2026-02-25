@@ -3,6 +3,8 @@
 import json
 import os
 
+import pytest
+
 from slip_stream.cli import (
     _find_project_root,
     _snake_case,
@@ -12,6 +14,7 @@ from slip_stream.cli import (
     cmd_run,
     cmd_schema_add,
     cmd_schema_list,
+    cmd_schema_test,
     cmd_schema_validate,
     main,
 )
@@ -367,3 +370,299 @@ class TestMain:
         monkeypatch.chdir(tmp_path)
         code = main(["schema", "validate"])
         assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# slip run — subprocess-based dev server
+# ---------------------------------------------------------------------------
+
+
+class TestRunCommand:
+    """Tests for cmd_run() using mocked subprocess.call."""
+
+    def test_run_calls_uvicorn_with_defaults(self, tmp_path, monkeypatch):
+        (tmp_path / "schemas").mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        captured_cmd = {}
+
+        def fake_call(cmd, cwd=None):
+            captured_cmd["cmd"] = cmd
+            captured_cmd["cwd"] = cwd
+            return 0
+
+        monkeypatch.setattr("slip_stream.cli.subprocess.call", fake_call)
+
+        args = build_parser().parse_args(["run"])
+        code = cmd_run(args)
+
+        assert code == 0
+        assert "uvicorn" in captured_cmd["cmd"]
+        assert "main:app" in captured_cmd["cmd"]
+        assert "127.0.0.1" in captured_cmd["cmd"]
+        assert "8000" in captured_cmd["cmd"]
+        assert "--reload" in captured_cmd["cmd"]
+
+    def test_run_respects_custom_app_host_port(self, tmp_path, monkeypatch):
+        (tmp_path / "schemas").mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        captured_cmd = {}
+
+        def fake_call(cmd, cwd=None):
+            captured_cmd["cmd"] = cmd
+            return 0
+
+        monkeypatch.setattr("slip_stream.cli.subprocess.call", fake_call)
+
+        args = build_parser().parse_args(
+            ["run", "--app", "myapp:application", "--host", "0.0.0.0", "--port", "9000"]
+        )
+        code = cmd_run(args)
+
+        assert code == 0
+        assert "myapp:application" in captured_cmd["cmd"]
+        assert "0.0.0.0" in captured_cmd["cmd"]
+        assert "9000" in captured_cmd["cmd"]
+
+    def test_run_keyboard_interrupt_returns_zero(self, tmp_path, monkeypatch):
+        (tmp_path / "schemas").mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        def fake_call(cmd, cwd=None):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr("slip_stream.cli.subprocess.call", fake_call)
+
+        args = build_parser().parse_args(["run"])
+        code = cmd_run(args)
+        assert code == 0
+
+    def test_run_passes_reload_dir_as_project_root(self, tmp_path, monkeypatch):
+        (tmp_path / "schemas").mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        captured_cmd = {}
+
+        def fake_call(cmd, cwd=None):
+            captured_cmd["cmd"] = cmd
+            captured_cmd["cwd"] = cwd
+            return 0
+
+        monkeypatch.setattr("slip_stream.cli.subprocess.call", fake_call)
+
+        args = build_parser().parse_args(["run"])
+        cmd_run(args)
+
+        idx = captured_cmd["cmd"].index("--reload-dir")
+        assert captured_cmd["cmd"][idx + 1] == str(tmp_path)
+
+    def test_main_dispatches_run(self, tmp_path, monkeypatch):
+        (tmp_path / "schemas").mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        def fake_call(cmd, cwd=None):
+            return 0
+
+        monkeypatch.setattr("slip_stream.cli.subprocess.call", fake_call)
+
+        code = main(["run"])
+        assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# slip schema test — schemathesis integration
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaTest:
+    """Tests for cmd_schema_test() with mocked SchemaTestRunner."""
+
+    def _setup_project(self, tmp_path, monkeypatch):
+        """Create a minimal project layout and chdir into it."""
+        schemas = tmp_path / "schemas"
+        schemas.mkdir()
+        monkeypatch.chdir(tmp_path)
+        return tmp_path
+
+    def test_fails_without_project(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        args = build_parser().parse_args(["schema", "test"])
+        code = cmd_schema_test(args)
+        assert code == 1
+
+    def test_fails_when_schemathesis_not_installed(self, tmp_path, monkeypatch):
+        self._setup_project(tmp_path, monkeypatch)
+
+        # Simulate missing slip_stream.testing.runner import
+        import sys
+
+        monkeypatch.setitem(sys.modules, "slip_stream.testing.runner", None)
+
+        args = build_parser().parse_args(["schema", "test"])
+        code = cmd_schema_test(args)
+        assert code == 1
+
+    def test_lifecycle_mode_success(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        self._setup_project(tmp_path, monkeypatch)
+
+        from slip_stream.testing.runner import TestResult
+
+        mock_runner = MagicMock()
+        mock_runner.run_lifecycle_tests.return_value = [
+            TestResult(schema_name="widget", passed=True, steps_completed=6)
+        ]
+        mock_runner.print_results = MagicMock()
+
+        MockRunnerClass = MagicMock(return_value=mock_runner)
+
+        import sys
+
+        mock_module = MagicMock()
+        mock_module.SchemaTestRunner = MockRunnerClass
+        monkeypatch.setitem(sys.modules, "slip_stream.testing.runner", mock_module)
+
+        args = build_parser().parse_args(["schema", "test", "--mode", "lifecycle"])
+        code = cmd_schema_test(args)
+
+        assert code == 0
+        mock_runner.run_lifecycle_tests.assert_called_once()
+
+    def test_lifecycle_mode_with_failure(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        self._setup_project(tmp_path, monkeypatch)
+
+        from slip_stream.testing.runner import TestResult
+
+        mock_runner = MagicMock()
+        mock_runner.run_lifecycle_tests.return_value = [
+            TestResult(schema_name="widget", passed=False, error="500 on create")
+        ]
+        mock_runner.print_results = MagicMock()
+
+        MockRunnerClass = MagicMock(return_value=mock_runner)
+
+        import sys
+
+        mock_module = MagicMock()
+        mock_module.SchemaTestRunner = MockRunnerClass
+        monkeypatch.setitem(sys.modules, "slip_stream.testing.runner", mock_module)
+
+        args = build_parser().parse_args(["schema", "test", "--mode", "lifecycle"])
+        code = cmd_schema_test(args)
+
+        assert code == 1
+
+    def test_fuzz_mode_delegates_to_schemathesis_cli(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        self._setup_project(tmp_path, monkeypatch)
+
+        mock_runner = MagicMock()
+        mock_runner.run_schemathesis_cli.return_value = 0
+
+        MockRunnerClass = MagicMock(return_value=mock_runner)
+
+        import sys
+
+        mock_module = MagicMock()
+        mock_module.SchemaTestRunner = MockRunnerClass
+        monkeypatch.setitem(sys.modules, "slip_stream.testing.runner", mock_module)
+
+        args = build_parser().parse_args(["schema", "test", "--mode", "fuzz"])
+        code = cmd_schema_test(args)
+
+        assert code == 0
+        mock_runner.run_schemathesis_cli.assert_called_once()
+
+    def test_all_mode_runs_lifecycle_then_fuzz(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        self._setup_project(tmp_path, monkeypatch)
+
+        from slip_stream.testing.runner import TestResult
+
+        mock_runner = MagicMock()
+        mock_runner.run_lifecycle_tests.return_value = [
+            TestResult(schema_name="widget", passed=True, steps_completed=6)
+        ]
+        mock_runner.print_results = MagicMock()
+        mock_runner.run_schemathesis_cli.return_value = 0
+
+        MockRunnerClass = MagicMock(return_value=mock_runner)
+
+        import sys
+
+        mock_module = MagicMock()
+        mock_module.SchemaTestRunner = MockRunnerClass
+        monkeypatch.setitem(sys.modules, "slip_stream.testing.runner", mock_module)
+
+        args = build_parser().parse_args(["schema", "test", "--mode", "all"])
+        code = cmd_schema_test(args)
+
+        assert code == 0
+        mock_runner.run_lifecycle_tests.assert_called_once()
+        mock_runner.run_schemathesis_cli.assert_called_once()
+
+    def test_all_mode_stops_after_lifecycle_failure(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        self._setup_project(tmp_path, monkeypatch)
+
+        from slip_stream.testing.runner import TestResult
+
+        mock_runner = MagicMock()
+        mock_runner.run_lifecycle_tests.return_value = [
+            TestResult(schema_name="widget", passed=False, error="create failed")
+        ]
+        mock_runner.print_results = MagicMock()
+
+        MockRunnerClass = MagicMock(return_value=mock_runner)
+
+        import sys
+
+        mock_module = MagicMock()
+        mock_module.SchemaTestRunner = MockRunnerClass
+        monkeypatch.setitem(sys.modules, "slip_stream.testing.runner", mock_module)
+
+        args = build_parser().parse_args(["schema", "test", "--mode", "all"])
+        code = cmd_schema_test(args)
+
+        # Exits with 1, does NOT call schemathesis
+        assert code == 1
+        mock_runner.run_schemathesis_cli.assert_not_called()
+
+    def test_main_dispatches_schema_test(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        self._setup_project(tmp_path, monkeypatch)
+
+        from slip_stream.testing.runner import TestResult
+
+        mock_runner = MagicMock()
+        mock_runner.run_lifecycle_tests.return_value = [
+            TestResult(schema_name="widget", passed=True)
+        ]
+        mock_runner.print_results = MagicMock()
+
+        MockRunnerClass = MagicMock(return_value=mock_runner)
+
+        import sys
+
+        mock_module = MagicMock()
+        mock_module.SchemaTestRunner = MockRunnerClass
+        monkeypatch.setitem(sys.modules, "slip_stream.testing.runner", mock_module)
+
+        code = main(["schema", "test"])
+        assert code == 0
+
+    def test_schema_subcommand_no_command_exits(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        # Calling "schema" with no subcommand triggers the help branch in main()
+        # which calls parser.parse_args(["schema", "--help"]) -> SystemExit(0)
+        with pytest.raises(SystemExit) as exc_info:
+            main(["schema"])
+        assert exc_info.value.code == 0

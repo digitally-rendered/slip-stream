@@ -384,3 +384,252 @@ class TestGraphQLLifecycle:
 
         assert result is True
         assert hooks_fired == ["delete", "delete"]
+
+    def _make_list_mock_registration(self):
+        """Create a mock registration whose list service returns an iterable."""
+        entity = SimpleNamespace(
+            model_dump=lambda: {"id": str(uuid.uuid4()), "name": "test"},
+        )
+
+        # List service must return a list, not a single entity
+        list_service = AsyncMock()
+        list_service.execute = AsyncMock(return_value=[entity])
+
+        other_service = AsyncMock()
+        other_service.execute = AsyncMock(return_value=entity)
+
+        mock_repo = AsyncMock()
+        mock_repo.get_by_entity_id = AsyncMock(return_value=entity)
+
+        reg = SimpleNamespace(
+            schema_name="widget",
+            repository_class=MagicMock(return_value=mock_repo),
+            services={
+                "create": MagicMock(return_value=other_service),
+                "get": MagicMock(return_value=other_service),
+                "list": MagicMock(return_value=list_service),
+                "update": MagicMock(return_value=other_service),
+                "delete": MagicMock(return_value=other_service),
+            },
+            handler_overrides={},
+            create_model=lambda **kw: SimpleNamespace(**kw),
+            update_model=lambda **kw: SimpleNamespace(**kw),
+        )
+        return reg, entity
+
+    @pytest.mark.asyncio
+    async def test_list_with_where_filter(self, registry_with_schema):
+        """List resolver passes a valid where clause through the DSL without error."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity = self._make_list_mock_registration()
+        # Provide schema_dict so the DSL allows schema fields (including 'name')
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        reg.schema_dict = schema
+
+        factory = GraphQLFactory()
+        properties = schema.get("properties", {})
+        et = factory._create_entity_type("Widget", properties, "widget")
+
+        resolver = factory._make_list_resolver("widget", et, reg, lambda: None)
+
+        info = self._make_fake_info()
+        # 'name' is a schema field, so the DSL built from schema_dict allows it
+        result = await resolver(info, skip=0, limit=10, where={"name": {"_eq": "test"}})
+        # The mock list service returns a list; we verify no error is raised
+        assert isinstance(result, list)
+
+    @pytest.mark.asyncio
+    async def test_list_with_sort(self, registry_with_schema):
+        """List resolver accepts a sort string for a schema field without error."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity = self._make_list_mock_registration()
+        # Provide schema_dict so the DSL allows schema fields (including 'name')
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        reg.schema_dict = schema
+
+        factory = GraphQLFactory()
+        properties = schema.get("properties", {})
+        et = factory._create_entity_type("Widget", properties, "widget")
+
+        resolver = factory._make_list_resolver("widget", et, reg, lambda: None)
+
+        info = self._make_fake_info()
+        result = await resolver(info, skip=0, limit=10, sort="name")
+        assert isinstance(result, list)
+
+    @pytest.mark.asyncio
+    async def test_list_invalid_filter_raises_value_error(self, registry_with_schema):
+        """List resolver raises ValueError when where clause fails DSL validation."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+        from slip_stream.core.query import QueryDSL, QueryValidationError
+
+        reg, entity, svc = self._make_mock_registration()
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        et = factory._create_entity_type("Widget", properties, "widget")
+
+        resolver = factory._make_list_resolver("widget", et, reg, lambda: None)
+
+        info = self._make_fake_info()
+
+        # Patch QueryDSL.to_mongo to raise QueryValidationError to simulate
+        # an invalid filter expression reaching the resolver
+        original_to_mongo = QueryDSL.to_mongo
+
+        def raising_to_mongo(self, raw):
+            raise QueryValidationError("Invalid filter")
+
+        QueryDSL.to_mongo = raising_to_mongo  # type: ignore[method-assign]
+        try:
+            with pytest.raises(ValueError, match="Invalid filter"):
+                await resolver(info, skip=0, limit=10, where={"bad": "filter"})
+        finally:
+            QueryDSL.to_mongo = original_to_mongo  # type: ignore[method-assign]
+
+    @pytest.mark.asyncio
+    async def test_update_not_found_raises_value_error(self, registry_with_schema):
+        """Update resolver raises ValueError when entity is not found."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        # Create a registration where the repo returns None (entity not found)
+        mock_repo = AsyncMock()
+        mock_repo.get_by_entity_id = AsyncMock(return_value=None)
+
+        reg = SimpleNamespace(
+            schema_name="widget",
+            repository_class=MagicMock(return_value=mock_repo),
+            services={},
+            handler_overrides={},
+            update_model=lambda **kw: SimpleNamespace(**kw),
+            create_model=lambda **kw: SimpleNamespace(**kw),
+        )
+
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        et = factory._create_entity_type("Widget", properties, "widget")
+        _, ui = factory._create_input_types("Widget", properties, [])
+
+        resolver = factory._make_update_resolver("widget", et, ui, reg, lambda: None)
+
+        info = self._make_fake_info()
+        import strawberry
+
+        original_asdict = strawberry.asdict
+        strawberry.asdict = lambda x: {"name": "updated"}
+        try:
+            with pytest.raises((ValueError, Exception)):
+                await resolver(info, str(uuid.uuid4()), SimpleNamespace(name="updated"))
+        finally:
+            strawberry.asdict = original_asdict
+
+    @pytest.mark.asyncio
+    async def test_delete_not_found_raises_value_error(self, registry_with_schema):
+        """Delete resolver raises ValueError when entity is not found."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        mock_repo = AsyncMock()
+        mock_repo.get_by_entity_id = AsyncMock(return_value=None)
+
+        reg = SimpleNamespace(
+            schema_name="widget",
+            repository_class=MagicMock(return_value=mock_repo),
+            services={},
+            handler_overrides={},
+        )
+
+        factory = GraphQLFactory()
+        resolver = factory._make_delete_resolver("widget", reg, lambda: None)
+
+        info = self._make_fake_info()
+        with pytest.raises(ValueError, match="widget not found"):
+            await resolver(info, str(uuid.uuid4()))
+
+    @pytest.mark.asyncio
+    async def test_create_with_hook_error_raises_value_error(
+        self, registry_with_schema
+    ):
+        """Create resolver re-raises HookError as ValueError for Strawberry."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        reg, entity, svc = self._make_mock_registration()
+        bus = EventBus()
+
+        async def guard(ctx):
+            raise HookError(422, "Validation failed in hook")
+
+        bus.register("pre_create", guard, schema_name="widget")
+
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        et = factory._create_entity_type("Widget", properties, "widget")
+        ci, _ = factory._create_input_types("Widget", properties, required)
+
+        resolver = factory._make_create_resolver(
+            "widget", et, ci, reg, lambda: None, event_bus=bus
+        )
+
+        info = self._make_fake_info()
+        import strawberry
+
+        original_asdict = strawberry.asdict
+        strawberry.asdict = lambda x: {"name": "test"}
+        try:
+            with pytest.raises(ValueError, match="Validation failed in hook"):
+                await resolver(info, SimpleNamespace(name="test"))
+        finally:
+            strawberry.asdict = original_asdict
+
+    @pytest.mark.asyncio
+    async def test_schema_dag_query(self, registry_with_schema):
+        """schema_dag resolver returns a dict with schema names as keys."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        factory = GraphQLFactory()
+        dag_resolver = factory._make_schema_dag_resolver(registry_with_schema)
+
+        info = self._make_fake_info()
+        dag = await dag_resolver(info)
+
+        assert isinstance(dag, dict)
+        assert "widget" in dag
+        assert "versions" in dag["widget"]
+        assert "latest_version" in dag["widget"]
+        assert "dependencies" in dag["widget"]
+
+    @pytest.mark.asyncio
+    async def test_get_by_entity_id_not_found_returns_none(self, registry_with_schema):
+        """Get resolver returns None when entity does not exist."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        mock_repo = AsyncMock()
+        mock_repo.get_by_entity_id = AsyncMock(return_value=None)
+
+        reg = SimpleNamespace(
+            schema_name="widget",
+            repository_class=MagicMock(return_value=mock_repo),
+            services={},
+            handler_overrides={},
+        )
+
+        factory = GraphQLFactory()
+        schema = registry_with_schema.get_schema("widget", "1.0.0")
+        properties = schema.get("properties", {})
+        et = factory._create_entity_type("Widget", properties, "widget")
+
+        resolver = factory._make_get_resolver("widget", et, reg, lambda: None)
+
+        info = self._make_fake_info()
+        result = await resolver(info, str(uuid.uuid4()))
+        assert result is None

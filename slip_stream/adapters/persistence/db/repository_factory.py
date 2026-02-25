@@ -92,6 +92,27 @@ class RepositoryFactory:
                     filter_criteria=filter_criteria,
                 )
 
+            async def list_latest_active_cursor(
+                self,
+                first: int | None = None,
+                last: int | None = None,
+                after: str | None = None,
+                before: str | None = None,
+                sort_by: str = "created_at",
+                sort_order: int = -1,
+                filter_criteria: dict[str, Any] | None = None,
+            ) -> tuple[list[Any], dict[str, Any]]:
+                """Return cursor-paginated latest active document versions."""
+                return await self._crud.list_latest_active_cursor(
+                    first=first,
+                    last=last,
+                    after=after,
+                    before=before,
+                    sort_by=sort_by,
+                    sort_order=sort_order,
+                    filter_criteria=filter_criteria,
+                )
+
             async def update_by_entity_id(
                 self,
                 entity_id: Any,
@@ -118,6 +139,28 @@ class RepositoryFactory:
                 """Soft-delete by creating a tombstone document version."""
                 return await self._crud.delete_by_entity_id(
                     entity_id=entity_id, user_id=user_id
+                )
+
+            async def bulk_create(
+                self, items: list[Any], user_id: str | None = None
+            ) -> list[Any]:
+                """Create multiple documents via VersionedMongoCRUD.bulk_create()."""
+                return await self._crud.bulk_create(items=items, user_id=user_id)
+
+            async def bulk_update(
+                self,
+                updates: list[tuple[Any, Any]],
+                user_id: str | None = None,
+            ) -> list[Any | None]:
+                """Create new versions for multiple entities via VersionedMongoCRUD.bulk_update()."""
+                return await self._crud.bulk_update(updates=updates, user_id=user_id)
+
+            async def bulk_delete(
+                self, entity_ids: list[Any], user_id: str | None = None
+            ) -> list[Any | None]:
+                """Soft-delete multiple entities via VersionedMongoCRUD.bulk_delete()."""
+                return await self._crud.bulk_delete(
+                    entity_ids=entity_ids, user_id=user_id
                 )
 
         pascal = "".join(word.capitalize() for word in schema_name.split("_"))

@@ -1,7 +1,9 @@
 """Tests for the MCP server tools."""
 
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import mcp.types as mcp_types
 import pytest
 
 from slip_stream.core.schema.registry import SchemaRegistry
@@ -10,6 +12,24 @@ from slip_stream.mcp.server import (
     create_mcp_server,
 )
 from slip_stream.schema_utils import create_schema_file
+
+# ---------------------------------------------------------------------------
+# Helper to invoke the call_tool dispatcher via the MCP server's
+# registered CallToolRequest handler.  This exercises the full
+# call_tool -> _handle_* path without needing a real MCP transport.
+# ---------------------------------------------------------------------------
+
+
+async def _call_tool(server, name: str, arguments: dict) -> str:
+    """Dispatch a tool call through the server and return the text response."""
+    handler = server.request_handlers[mcp_types.CallToolRequest]
+    req = mcp_types.CallToolRequest(
+        method="tools/call",
+        params=mcp_types.CallToolRequestParams(name=name, arguments=arguments),
+    )
+    result = await handler(req)
+    # result is ServerResult; root is CallToolResult with a content list
+    return result.root.content[0].text
 
 
 @pytest.fixture(autouse=True)
@@ -399,3 +419,413 @@ class TestGetTopologyTool:
             schema_dir="/tmp/test",
         )
         assert server.name == "slip-stream"
+
+
+# ---------------------------------------------------------------------------
+# Full call_tool dispatcher tests — exercises every _handle_* function
+# ---------------------------------------------------------------------------
+
+
+class TestCallToolDispatcher:
+    """Drive the full call_tool -> _handle_* path via the registered handler."""
+
+    @pytest.mark.asyncio
+    async def test_list_schemas_via_dispatcher(self, server, registry):
+        text = await _call_tool(server, "list_schemas", {})
+        data = json.loads(text)
+        names = [s["name"] for s in data["schemas"]]
+        assert "widget" in names
+        assert "gadget" in names
+
+    @pytest.mark.asyncio
+    async def test_get_schema_via_dispatcher(self, server):
+        text = await _call_tool(server, "get_schema", {"name": "widget"})
+        data = json.loads(text)
+        assert data["name"] == "widget"
+        assert "properties" in data["schema"]
+
+    @pytest.mark.asyncio
+    async def test_get_schema_specific_version_via_dispatcher(self, server):
+        text = await _call_tool(
+            server, "get_schema", {"name": "widget", "version": "1.0.0"}
+        )
+        data = json.loads(text)
+        assert data["version"] == "1.0.0"
+        assert data["name"] == "widget"
+
+    @pytest.mark.asyncio
+    async def test_get_schema_error_returns_error_text(self, server):
+        text = await _call_tool(server, "get_schema", {"name": "nonexistent"})
+        assert "Error" in text
+
+    @pytest.mark.asyncio
+    async def test_get_schema_dag_via_dispatcher(self, server):
+        text = await _call_tool(server, "get_schema_dag", {})
+        data = json.loads(text)
+        assert "dag" in data
+        names = [n["name"] for n in data["dag"]]
+        assert "widget" in names
+
+    @pytest.mark.asyncio
+    async def test_list_versions_via_dispatcher(self, server):
+        text = await _call_tool(server, "list_versions", {"name": "widget"})
+        data = json.loads(text)
+        assert data["name"] == "widget"
+        assert "1.0.0" in data["versions"]
+        assert data["latest_version"] == "1.0.0"
+
+    @pytest.mark.asyncio
+    async def test_describe_entity_via_dispatcher(self, server):
+        text = await _call_tool(server, "describe_entity", {"name": "widget"})
+        data = json.loads(text)
+        assert data["name"] == "widget"
+        field_names = [f["name"] for f in data["fields"]]
+        assert "name" in field_names
+        assert "api_endpoints" in data
+        assert "rest" in data["api_endpoints"]
+
+    @pytest.mark.asyncio
+    async def test_describe_entity_marks_audit_fields(self, server):
+        text = await _call_tool(server, "describe_entity", {"name": "widget"})
+        data = json.loads(text)
+        fields_by_name = {f["name"]: f for f in data["fields"]}
+        # entity_id and id are audit fields
+        assert fields_by_name["entity_id"]["is_audit_field"] is True
+        # name is a user field
+        assert fields_by_name["name"]["is_audit_field"] is False
+
+    @pytest.mark.asyncio
+    async def test_describe_entity_resolves_latest_version(self, server):
+        text = await _call_tool(
+            server, "describe_entity", {"name": "widget", "version": "latest"}
+        )
+        data = json.loads(text)
+        assert data["version"] == "1.0.0"
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool_returns_unknown_message(self, server):
+        text = await _call_tool(server, "does_not_exist", {})
+        assert "Unknown tool" in text
+
+    @pytest.mark.asyncio
+    async def test_validate_schemas_no_schema_dir(self, server):
+        # server fixture has no schema_dir set
+        text = await _call_tool(server, "validate_schemas", {})
+        assert "Error" in text
+        assert "schema_dir" in text
+
+    @pytest.mark.asyncio
+    async def test_validate_schemas_with_valid_schemas(self, registry, tmp_path):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        create_schema_file(schemas_dir, "pet")
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        text = await _call_tool(srv, "validate_schemas", {})
+        data = json.loads(text)
+        assert data["valid"] is True
+        assert data["total"] == 1
+
+    @pytest.mark.asyncio
+    async def test_generate_sdk_no_schema_dir(self, server):
+        text = await _call_tool(server, "generate_sdk", {})
+        assert "Error" in text
+        assert "schema_dir" in text
+
+    @pytest.mark.asyncio
+    async def test_generate_sdk_with_schema_dir(self, registry, tmp_path):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        create_schema_file(schemas_dir, "order")
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        text = await _call_tool(srv, "generate_sdk", {})
+        assert "class Order(BaseModel):" in text
+        assert "class SlipStreamClient:" in text
+
+    @pytest.mark.asyncio
+    async def test_generate_sdk_writes_to_output_path(self, registry, tmp_path):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        create_schema_file(schemas_dir, "item")
+        output_file = str(tmp_path / "sdk.py")
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        text = await _call_tool(srv, "generate_sdk", {"output_path": output_file})
+        data = json.loads(text)
+        assert data["written_to"] == output_file
+        assert "item" in data["schemas"]
+
+    @pytest.mark.asyncio
+    async def test_query_rest_api_get(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [{"entity_id": "abc", "name": "test"}]
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(
+                server, "query_rest_api", {"path": "/api/v1/widget/"}
+            )
+
+        assert "200" in text
+        assert "entity_id" in text
+
+    @pytest.mark.asyncio
+    async def test_query_rest_api_post(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 201
+        mock_resp.json.return_value = {"entity_id": "new-id", "name": "widget1"}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(
+                server,
+                "query_rest_api",
+                {
+                    "method": "POST",
+                    "path": "/api/v1/widget/",
+                    "body": {"name": "widget1"},
+                },
+            )
+
+        assert "201" in text
+
+    @pytest.mark.asyncio
+    async def test_query_rest_api_patch(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"entity_id": "abc", "name": "updated"}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.patch = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(
+                server,
+                "query_rest_api",
+                {
+                    "method": "PATCH",
+                    "path": "/api/v1/widget/abc",
+                    "body": {"name": "updated"},
+                },
+            )
+
+        assert "200" in text
+
+    @pytest.mark.asyncio
+    async def test_query_rest_api_delete(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 204
+        mock_resp.json.side_effect = Exception("no body")
+        mock_resp.text = ""
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.delete = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(
+                server,
+                "query_rest_api",
+                {"method": "DELETE", "path": "/api/v1/widget/abc"},
+            )
+
+        assert "204" in text
+
+    @pytest.mark.asyncio
+    async def test_query_rest_api_with_schema_version_header(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = []
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            await _call_tool(
+                server,
+                "query_rest_api",
+                {"path": "/api/v1/widget/", "schema_version": "2.0.0"},
+            )
+
+        call_kwargs = mock_client.get.call_args
+        assert call_kwargs.kwargs["headers"]["X-Schema-Version"] == "2.0.0"
+
+    @pytest.mark.asyncio
+    async def test_query_graphql_via_dispatcher(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": {"widgets": []}}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(
+                server,
+                "query_graphql",
+                {"query": "{ widgets { entity_id } }"},
+            )
+
+        assert "widgets" in text
+
+    @pytest.mark.asyncio
+    async def test_query_graphql_with_variables(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": {"widget": {"entity_id": "abc"}}}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            await _call_tool(
+                server,
+                "query_graphql",
+                {
+                    "query": "query GetWidget($id: ID!) { widget(id: $id) { entity_id } }",
+                    "variables": {"id": "abc"},
+                },
+            )
+
+        call_kwargs = mock_client.post.call_args
+        assert call_kwargs.kwargs["json"]["variables"] == {"id": "abc"}
+
+    @pytest.mark.asyncio
+    async def test_list_tools_returns_all_expected_tools(self, server):
+        list_handler = server.request_handlers[mcp_types.ListToolsRequest]
+        req = mcp_types.ListToolsRequest(method="tools/list", params=None)
+        result = await list_handler(req)
+        tool_names = [t.name for t in result.root.tools]
+        expected = [
+            "list_schemas",
+            "get_schema",
+            "get_schema_dag",
+            "list_versions",
+            "describe_entity",
+            "query_rest_api",
+            "query_graphql",
+            "create_schema",
+            "validate_schemas",
+            "generate_sdk",
+            "get_topology",
+        ]
+        for name in expected:
+            assert name in tool_names, f"Expected tool '{name}' not in tool list"
+
+    @pytest.mark.asyncio
+    async def test_query_rest_api_rejected_method_returns_error(self, server):
+        # The MCP input schema enumerates valid methods; sending an unlisted method
+        # causes the MCP layer to return a validation error before reaching the handler.
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(
+                server,
+                "query_rest_api",
+                {"method": "PUT", "path": "/api/v1/widget/"},
+            )
+
+        # MCP returns an input-validation error for unknown methods
+        assert "PUT" in text
+
+    @pytest.mark.asyncio
+    async def test_create_schema_via_dispatcher(self, registry, tmp_path):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        text = await _call_tool(srv, "create_schema", {"name": "invoice"})
+        data = json.loads(text)
+        assert "created" in data
+        assert "invoice" in data["schema_name"]
+        assert (schemas_dir / "invoice.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_create_schema_no_schema_dir_via_dispatcher(self, server):
+        text = await _call_tool(server, "create_schema", {"name": "invoice"})
+        assert "Error" in text
+        assert "schema_dir" in text
+
+    @pytest.mark.asyncio
+    async def test_create_schema_duplicate_via_dispatcher(self, registry, tmp_path):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        create_schema_file(schemas_dir, "duplicate")
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        text = await _call_tool(srv, "create_schema", {"name": "duplicate"})
+        assert "Error" in text
+
+    @pytest.mark.asyncio
+    async def test_get_topology_via_dispatcher(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"schemas": ["widget"], "filters": []}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(server, "get_topology", {})
+
+        data = json.loads(text)
+        assert "schemas" in data
+
+    @pytest.mark.asyncio
+    async def test_get_topology_non_200_includes_status(self, server):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 503
+        mock_resp.json.return_value = {"detail": "Service Unavailable"}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            text = await _call_tool(server, "get_topology", {})
+
+        assert "503" in text

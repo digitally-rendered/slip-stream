@@ -98,3 +98,48 @@ class GenericDeleteService(Generic[DocT, CreateT, UpdateT]):
         return await self._repository.delete_by_entity_id(
             entity_id=entity_id, user_id=user_id
         )
+
+
+class GenericBulkCreateService(Generic[DocT, CreateT, UpdateT]):
+    """Use case: bulk create entity documents."""
+
+    def __init__(self, repository: RepositoryPort[DocT, CreateT, UpdateT]) -> None:
+        self._repository = repository
+
+    async def execute(
+        self, items: list[CreateT], user_id: str | None = None
+    ) -> list[DocT]:
+        """Delegate to repository.bulk_create()."""
+        return await self._repository.bulk_create(items=items, user_id=user_id)
+
+
+class GenericBulkUpdateService(Generic[DocT, CreateT, UpdateT]):
+    """Use case: bulk update entity documents."""
+
+    def __init__(self, repository: RepositoryPort[DocT, CreateT, UpdateT]) -> None:
+        self._repository = repository
+
+    async def execute(
+        self,
+        updates: list[tuple[uuid.UUID, UpdateT]],
+        user_id: str | None = None,
+    ) -> list[DocT | None]:
+        """Delegate to repository.bulk_update()."""
+        return await self._repository.bulk_update(updates=updates, user_id=user_id)
+
+
+class GenericBulkDeleteService(Generic[DocT, CreateT, UpdateT]):
+    """Use case: bulk soft-delete entity documents."""
+
+    def __init__(self, repository: RepositoryPort[DocT, CreateT, UpdateT]) -> None:
+        self._repository = repository
+
+    async def execute(
+        self,
+        entity_ids: list[uuid.UUID],
+        user_id: str | None = None,
+    ) -> list[DocT | None]:
+        """Delegate to repository.bulk_delete()."""
+        return await self._repository.bulk_delete(
+            entity_ids=entity_ids, user_id=user_id
+        )
