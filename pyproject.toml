@@ -2,7 +2,7 @@
 name = "slip-stream"
 version = "0.1.0"
 description = "JSON Schema-driven hexagonal backend framework for FastAPI + MongoDB"
-authors = ["draw"]
+authors = ["drew <drew@digitallyrendered.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "slip_stream"}]
@@ -123,6 +123,10 @@ exclude_lines = [
     "raise NotImplementedError",
     "pass",
 ]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "examples"]
+skips = ["B101"]  # Allow assert in non-test code (used in framework internals)
 
 [tool.mypy]
 python_version = "3.12"

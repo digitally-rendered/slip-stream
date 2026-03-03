@@ -1,0 +1,6 @@
+10011	IGNORE	Cookie Without Secure Flag (stateless API, no cookies used)
+10015	IGNORE	Missing Cache-Control Header (API responses, caching controlled by client)
+10096	IGNORE	Timestamp Disclosure (audit timestamps are intentional domain fields)
+10055	IGNORE	CSP Header Not Set (API-only, no HTML rendering)
+10038	IGNORE	Content Security Policy Header Not Set (API-only)
+10098	IGNORE	Cross-Domain Misconfiguration (CORS handled at deployment layer)

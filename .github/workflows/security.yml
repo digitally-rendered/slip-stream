@@ -1,0 +1,157 @@
+name: OWASP Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Weekly Monday 6 AM UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # -----------------------------------------------------------------
+  # SAST: Static Application Security Testing
+  # -----------------------------------------------------------------
+  sast:
+    name: SAST (Bandit + Semgrep)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Bandit
+        run: pip install bandit[toml]
+
+      - name: Bandit Security Scan
+        run: bandit -r slip_stream/ -c pyproject.toml -f json -o bandit-report.json || true
+
+      - name: Bandit Summary
+        run: bandit -r slip_stream/ -c pyproject.toml -ll -ii
+
+      - name: Upload Bandit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+      - name: Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/python
+        env:
+          SEMGREP_APP_TOKEN: ""
+
+  # -----------------------------------------------------------------
+  # SCA: Software Composition Analysis
+  # -----------------------------------------------------------------
+  sca:
+    name: SCA (pip-audit)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --all-extras
+
+      - name: Export requirements
+        run: poetry export -f requirements.txt --all-extras --without-hashes -o requirements.txt
+
+      - name: pip-audit
+        uses: pypa/gh-action-pip-audit@v1
+        with:
+          inputs: requirements.txt
+
+  # -----------------------------------------------------------------
+  # Secret Detection
+  # -----------------------------------------------------------------
+  secrets:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  # -----------------------------------------------------------------
+  # DAST: Dynamic Application Security Testing (OWASP ZAP)
+  # -----------------------------------------------------------------
+  zap:
+    name: DAST (OWASP ZAP)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --all-extras
+
+      - name: Start test app
+        run: |
+          poetry run python tests/security/zap_target.py &
+          echo "Waiting for test app..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8099/openapi.json > /dev/null 2>&1; then
+              echo "Test app is ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: ZAP API Scan
+        uses: zaproxy/action-api-scan@v0.10.0
+        with:
+          target: "http://localhost:8099/openapi.json"
+          format: openapi
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a"
+          fail_action: false
+
+      - name: Upload ZAP Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html

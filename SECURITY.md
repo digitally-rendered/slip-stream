@@ -12,7 +12,7 @@ If you discover a security vulnerability in slip-stream, please report it respon
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email **security@slip-stream.dev** (or open a private security advisory on GitHub) with:
+Instead, please email **drew@digitallyrendered.com** (or open a private security advisory on GitHub) with:
 
 1. A description of the vulnerability
 2. Steps to reproduce
