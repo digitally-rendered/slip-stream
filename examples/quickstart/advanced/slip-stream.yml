@@ -1,0 +1,61 @@
+app:
+  api_prefix: /api/v1
+  structured_errors: true
+
+databases:
+  mongo:
+    uri: mongodb://localhost:27017
+    name: petstore_db
+
+# External API integrations — maps remote OpenAPI specs to local schemas
+# through declarative field mapping. The adapter layer auto-generates
+# the translation code from this config.
+external_apis:
+  shipstation:
+    spec_url: https://ssapi.shipstation.com/openapi.json
+    base_url: https://ssapi.shipstation.com
+    auth:
+      type: basic
+      key_env: SHIPSTATION_API_KEY
+      secret_env: SHIPSTATION_API_SECRET
+    mappings:
+      # When an order is created, POST to ShipStation
+      - local_schema: order
+        remote_resource: /orders/createorder
+        remote_method: POST
+        trigger: post_create
+        field_map:
+          # local domain field  →  remote API field path
+          entity_id:              orderNumber
+          quantity:               items[0].quantity
+          status:                 orderStatus
+        response_map:
+          # remote API response  →  local extras key
+          tracking_number:        shipmentId
+          carrier:                carrierCode
+          estimated_days:         estimatedDays
+        constants:
+          # Static values injected into every request
+          orderStatus: awaiting_shipment
+          items[0].unitPrice: 0
+
+  thedogapi:
+    spec_url: https://api.thedogapi.com/v1
+    base_url: https://api.thedogapi.com/v1
+    auth:
+      type: header
+      header_name: x-api-key
+      key_env: DOG_API_KEY
+    mappings:
+      # When a pet is retrieved, enrich with breed data
+      - local_schema: pet
+        remote_resource: /breeds/search
+        remote_method: GET
+        trigger: post_get
+        query_params:
+          q: name
+        response_map:
+          breed_group: breed_group
+          temperament: temperament
+          life_span: life_span
+          origin: origin

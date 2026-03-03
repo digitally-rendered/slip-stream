@@ -1,0 +1,26 @@
+# slip-stream
+
+> JSON Schema-driven hexagonal backend framework for FastAPI + MongoDB. Drop a JSON schema file, get full CRUD API endpoints with versioned document persistence. Zero boilerplate, fully overridable at every layer.
+
+## Docs
+
+- [Getting Started](https://github.com/digitally-rendered/slip-stream/blob/main/docs/getting-started.md): Installation, first schema, first app
+- [JSON Schemas](https://github.com/digitally-rendered/slip-stream/blob/main/docs/schemas.md): Schema format, versioning, storage backends
+- [Decorators](https://github.com/digitally-rendered/slip-stream/blob/main/docs/decorators.md): @handler, @guard, @validate, @transform, @on, @publish
+- [Events](https://github.com/digitally-rendered/slip-stream/blob/main/docs/events.md): EventBus lifecycle hooks (pre/post CRUD)
+- [Filters](https://github.com/digitally-rendered/slip-stream/blob/main/docs/filters.md): ASGI filter chain (auth, envelope, projection, content negotiation)
+- [Overrides](https://github.com/digitally-rendered/slip-stream/blob/main/docs/overrides.md): 4-layer override system (models, repos, services, controllers)
+- [RequestContext](https://github.com/digitally-rendered/slip-stream/blob/main/docs/context.md): Unified context object for handlers and hooks
+- [Error Handling](https://github.com/digitally-rendered/slip-stream/blob/main/docs/errors.md): RFC 7807 structured error responses
+- [Observability](https://github.com/digitally-rendered/slip-stream/blob/main/docs/observability.md): Health probes, topology endpoint, OpenTelemetry
+- [API Reference](https://github.com/digitally-rendered/slip-stream/blob/main/docs/api-reference.md): All exported symbols
+
+## Code
+
+- [Quick Start Example](https://github.com/digitally-rendered/slip-stream/blob/main/examples/quickstart/main.py): Minimal petstore app
+- [Advanced Example](https://github.com/digitally-rendered/slip-stream/blob/main/examples/quickstart/advanced/main.py): Hex architecture with ports, adapters, and commands
+
+## Optional
+
+- [MCP Server](https://github.com/digitally-rendered/slip-stream/blob/main/docs/mcp.md): AI agent tools for schema discovery, queries, and code generation
+- [Exemplars](https://github.com/digitally-rendered/slip-stream/blob/main/docs/exemplars.md): Advanced petstore with command pattern and config-driven routing

@@ -1,0 +1,336 @@
+"""Tests for ResponseEnvelopeFilter."""
+
+import json
+
+import pytest
+from fastapi import FastAPI
+from starlette.requests import Request
+from starlette.responses import Response
+from starlette.testclient import TestClient
+
+from slip_stream.adapters.api.filters.base import FilterContext
+from slip_stream.adapters.api.filters.chain import FilterChain
+from slip_stream.adapters.api.filters.envelope import ResponseEnvelopeFilter
+from slip_stream.adapters.api.filters.middleware import FilterChainMiddleware
+
+
+def _make_request(path: str = "/api/v1/widget/", query_string: str = "") -> Request:
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": path,
+        "headers": [],
+        "query_string": query_string.encode(),
+    }
+    return Request(scope)
+
+
+def _make_response(data, status_code: int = 200) -> Response:
+    return Response(
+        content=json.dumps(data),
+        status_code=status_code,
+        media_type="application/json",
+    )
+
+
+class TestResponseEnvelopeFilter:
+    """Unit tests for the envelope filter."""
+
+    @pytest.mark.asyncio
+    async def test_wraps_dict_response(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = _make_response({"name": "Widget"})
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        assert "data" in body
+        assert "meta" in body
+        assert body["data"] == {"name": "Widget"}
+        assert "request_id" in body["meta"]
+
+    @pytest.mark.asyncio
+    async def test_wraps_list_with_pagination(self):
+        f = ResponseEnvelopeFilter(include_pagination=True)
+        request = _make_request(query_string="skip=10&limit=25")
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        items = [{"name": "A"}, {"name": "B"}]
+        response = _make_response(items)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        assert body["data"] == items
+        assert body["meta"]["pagination"] == {
+            "skip": 10,
+            "limit": 25,
+            "count": 2,
+        }
+
+    @pytest.mark.asyncio
+    async def test_pagination_defaults(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        assert body["meta"]["pagination"]["skip"] == 0
+        assert body["meta"]["pagination"]["limit"] == 100
+
+    @pytest.mark.asyncio
+    async def test_no_pagination_for_dict(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = _make_response({"name": "Widget"})
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        assert "pagination" not in body["meta"]
+
+    @pytest.mark.asyncio
+    async def test_no_pagination_when_disabled(self):
+        f = ResponseEnvelopeFilter(include_pagination=False)
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        assert "pagination" not in body["meta"]
+
+    @pytest.mark.asyncio
+    async def test_skips_error_responses(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = _make_response({"error": "not found"}, status_code=404)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        assert body == {"error": "not found"}
+
+    @pytest.mark.asyncio
+    async def test_skips_204(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = Response(status_code=204)
+        result = await f.on_response(request, response, context)
+        assert result.status_code == 204
+
+    @pytest.mark.asyncio
+    async def test_request_id_unique(self):
+        f = ResponseEnvelopeFilter()
+        ctx1 = FilterContext()
+        ctx2 = FilterContext()
+        request = _make_request()
+        await f.on_request(request, ctx1)
+        await f.on_request(request, ctx2)
+
+        assert ctx1.extras["request_id"] != ctx2.extras["request_id"]
+
+    @pytest.mark.asyncio
+    async def test_order_is_90(self):
+        f = ResponseEnvelopeFilter()
+        assert f.order == 90
+
+    @pytest.mark.asyncio
+    async def test_non_json_body_passthrough(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = Response(
+            content="plain text",
+            status_code=200,
+            media_type="text/plain",
+        )
+        result = await f.on_response(request, response, context)
+        # Can't parse as JSON, so should pass through
+        assert result.body == b"plain text"
+
+
+class TestEnvelopeFilterIntegration:
+    """Integration tests with FastAPI middleware."""
+
+    def test_envelope_wraps_endpoint(self):
+        app = FastAPI()
+
+        @app.get("/items")
+        async def items():
+            return [{"name": "A"}, {"name": "B"}]
+
+        chain = FilterChain()
+        chain.add_filter(ResponseEnvelopeFilter())
+        app.add_middleware(FilterChainMiddleware, filter_chain=chain)
+
+        client = TestClient(app)
+        response = client.get("/items")
+        assert response.status_code == 200
+        body = response.json()
+        assert "data" in body
+        assert "meta" in body
+        assert len(body["data"]) == 2
+        assert "pagination" in body["meta"]
+
+
+class TestPaginationTotalCount:
+    """Tests for total_count and has_more in pagination metadata."""
+
+    @pytest.mark.asyncio
+    async def test_total_count_in_pagination(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="skip=0&limit=10")
+        context = FilterContext()
+        context.extras["total_count"] = 42
+        await f.on_request(request, context)
+
+        items = [{"name": f"Item {i}"} for i in range(10)]
+        response = _make_response(items)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["total_count"] == 42
+        assert pagination["has_more"] is True
+        assert pagination["count"] == 10
+
+    @pytest.mark.asyncio
+    async def test_has_more_false_at_end(self):
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="skip=40&limit=10")
+        context = FilterContext()
+        context.extras["total_count"] = 42
+        await f.on_request(request, context)
+
+        items = [{"name": "A"}, {"name": "B"}]
+        response = _make_response(items)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["total_count"] == 42
+        assert pagination["has_more"] is False
+
+    @pytest.mark.asyncio
+    async def test_no_total_count_when_not_set(self):
+        """When total_count is not in extras, pagination omits it."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert "total_count" not in pagination
+        assert "has_more" not in pagination
+
+
+class TestCursorPaginationEnvelope:
+    """Tests for cursor-mode pagination metadata in the envelope filter."""
+
+    @pytest.mark.asyncio
+    async def test_cursor_mode_emits_page_info(self):
+        """When pagination_mode is 'cursor', envelope uses page_info keys."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="first=5")
+        context = FilterContext()
+        context.extras["pagination_mode"] = "cursor"
+        context.extras["page_info"] = {
+            "has_next_page": True,
+            "has_previous_page": False,
+            "start_cursor": "abc",
+            "end_cursor": "xyz",
+        }
+        await f.on_request(request, context)
+
+        items = [{"id": i} for i in range(5)]
+        response = _make_response(items)
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["mode"] == "cursor"
+        assert pagination["count"] == 5
+        assert pagination["has_next_page"] is True
+        assert pagination["has_previous_page"] is False
+        assert pagination["start_cursor"] == "abc"
+        assert pagination["end_cursor"] == "xyz"
+
+    @pytest.mark.asyncio
+    async def test_cursor_mode_empty_page_info_defaults(self):
+        """cursor mode with no page_info in extras defaults to False/None values."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request()
+        context = FilterContext()
+        context.extras["pagination_mode"] = "cursor"
+        # page_info intentionally absent
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["mode"] == "cursor"
+        assert pagination["has_next_page"] is False
+        assert pagination["has_previous_page"] is False
+        assert pagination["start_cursor"] is None
+        assert pagination["end_cursor"] is None
+
+    @pytest.mark.asyncio
+    async def test_cursor_mode_does_not_include_skip_limit(self):
+        """cursor mode pagination block has no skip or limit keys."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="first=10")
+        context = FilterContext()
+        context.extras["pagination_mode"] = "cursor"
+        context.extras["page_info"] = {}
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}, {"id": 2}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert "skip" not in pagination
+        assert "limit" not in pagination
+
+    @pytest.mark.asyncio
+    async def test_offset_mode_unaffected_by_cursor_flag_absence(self):
+        """When pagination_mode is absent (offset mode), existing offset logic applies."""
+        f = ResponseEnvelopeFilter()
+        request = _make_request(query_string="skip=5&limit=10")
+        context = FilterContext()
+        # no pagination_mode set in extras → offset mode
+        await f.on_request(request, context)
+
+        response = _make_response([{"id": 1}])
+        result = await f.on_response(request, response, context)
+
+        body = json.loads(result.body)
+        pagination = body["meta"]["pagination"]
+        assert pagination["skip"] == 5
+        assert pagination["limit"] == 10
+        assert "mode" not in pagination

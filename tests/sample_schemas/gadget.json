@@ -1,0 +1,13 @@
+{
+  "title": "Gadget",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "label"
+  ],
+  "version": "1.0.0"
+}

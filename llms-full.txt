@@ -1,0 +1,171 @@
+# slip-stream
+
+> JSON Schema-driven hexagonal backend framework for FastAPI + MongoDB. Drop a JSON schema file, get full CRUD API endpoints with versioned document persistence. Zero boilerplate, fully overridable at every layer.
+
+## Install
+
+```
+pip install slip-stream
+```
+
+Optional extras: `slip-stream[graphql]`, `slip-stream[sql]`, `slip-stream[mcp]`, `slip-stream[telemetry]`, `slip-stream[all]`
+
+Requires Python 3.12+, FastAPI >=0.115.0, Motor ^3.4.0, Pydantic v2.
+
+## Quick Start
+
+```bash
+pip install slip-stream
+slip init myproject
+cd myproject
+slip run
+# Visit http://localhost:8000/docs
+```
+
+Or manually:
+
+1. Create `schemas/pet.json`:
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pet",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string" },
+    "status": { "type": "string", "enum": ["available", "pending", "sold"] }
+  }
+}
+```
+
+2. Create `main.py`:
+```python
+from pathlib import Path
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from slip_stream import SlipStream
+
+app = FastAPI()
+slip = SlipStream(app=app, schema_dir=Path("./schemas"))
+
+@asynccontextmanager
+async def lifespan(a):
+    async with slip.lifespan():
+        yield
+
+app = FastAPI(lifespan=lifespan)
+slip.app = app
+```
+
+3. Run: `uvicorn main:app --reload`
+
+Each schema produces 5 REST endpoints: POST (create), GET list, GET by entity_id, PATCH (update), DELETE (soft-delete). Plus bulk endpoints: POST /bulk, PATCH /bulk, DELETE /bulk.
+
+## Architecture
+
+Hexagonal (ports and adapters). Core MUST NOT import from Adapters.
+
+```
+Driving Adapters: slip_stream/adapters/api/ (FastAPI routers, endpoint factory, GraphQL)
+Core Domain:      slip_stream/core/ (domain models, schema registry, ports, services, events)
+Driven Adapters:  slip_stream/adapters/persistence/ (MongoDB via Motor, SQL via SQLAlchemy)
+```
+
+Key components:
+- **SchemaRegistry**: JSON Schema -> Pydantic models (Document, Create, Update variants)
+- **EntityContainer**: 4-layer override system (models, repositories, services, controllers)
+- **OperationExecutor**: Shared lifecycle for REST and GraphQL (pre-hooks -> handler -> post-hooks)
+- **EventBus**: Async lifecycle hooks (pre_create, post_create, pre_update, post_update, etc.)
+- **FilterChain**: ASGI middleware (auth, envelope, content negotiation, projection, ETag, telemetry)
+- **SlipStreamRegistry**: Decorator API for guards, validators, transforms, and handler overrides
+
+## Versioned Document Pattern
+
+NEVER mutate documents. Append-only:
+- `create()` -> `record_version=1`, new `entity_id`
+- `update()` -> copy doc, increment `record_version`, new `id`
+- `delete()` -> tombstone with `deleted_at` set
+- All documents extend `BaseDocument` with audit fields (`id`, `entity_id`, `record_version`, `created_at`, `updated_at`, `deleted_at`, `created_by`, `updated_by`, `deleted_by`)
+
+## Decorator API (SlipStreamRegistry)
+
+```python
+from slip_stream import SlipStreamRegistry
+
+registry = SlipStreamRegistry()
+
+@registry.handler("pet", "create")
+async def custom_create(ctx):
+    # Replace default CRUD handler
+    ...
+
+@registry.guard("pet", "update", "delete")
+async def require_owner(ctx):
+    if ctx.current_user["id"] != ctx.entity.created_by:
+        raise HookError(403, "Not the owner")
+
+@registry.validate("pet", "create")
+async def validate_name(ctx):
+    if len(ctx.data.name) < 2:
+        raise HookError(422, "Name too short")
+
+@registry.transform("pet", "create", when="after")
+async def enrich_response(ctx):
+    ctx.result["enriched"] = True
+
+@registry.on("post_create", "pet")
+async def notify_on_create(ctx):
+    await send_notification(ctx.result)
+```
+
+Execution order: guards -> validators -> before-transforms -> handler -> after-transforms -> @on hooks -> publish hooks
+
+## Key Exports
+
+`SlipStream`, `SlipStreamRegistry`, `RequestContext`, `HookError`, `EventBus`, `BaseDocument`, `SchemaRegistry`, `EntityContainer`, `EndpointFactory`, `VersionedMongoCRUD`, `FilterBase`, `AuthFilter`, `ResponseEnvelopeFilter`, `FieldProjectionFilter`, `ContentNegotiationFilter`, `ETagFilter`, `TelemetryFilter`, `AuditTrail`, `WebhookDispatcher`, `QueryDSL`, `generate_sdk`, `DatabaseManager`, `StorageBackend`, `StorageConfig`, `SlipStreamConfig`
+
+## CLI
+
+```bash
+slip init myproject          # Scaffold a new project
+slip schema add widget       # Add a new JSON Schema
+slip schema list             # List discovered schemas
+slip schema validate         # Validate all schemas
+slip schema test             # Run schemathesis property-based tests
+slip run                     # Start dev server with auto-reload
+```
+
+## MCP Server (AI Agent Integration)
+
+11 tools for AI assistants. Install: `pip install slip-stream[mcp]`
+
+Run: `python -m slip_stream.mcp.server --schema-dir ./schemas --base-url http://localhost:8000`
+
+Docker: `docker run -i -v ./schemas:/schemas slip-stream-mcp --base-url http://host.docker.internal:8000`
+
+**Read tools**: `list_schemas`, `get_schema`, `get_schema_dag`, `list_versions`, `describe_entity`, `query_rest_api`, `query_graphql`, `get_topology`
+
+**Write tools**: `create_schema`, `validate_schemas`, `generate_sdk`
+
+## GraphQL
+
+Optional: `pip install slip-stream[graphql]`
+
+```python
+slip = SlipStream(app=app, schema_dir=Path("./schemas"), graphql=True)
+# GraphQL playground at /graphql
+```
+
+Auto-generates Strawberry types, queries, and mutations from the same JSON schemas. Full lifecycle parity with REST (same hooks, guards, transforms).
+
+## Docs
+
+- [Getting Started](https://github.com/digitally-rendered/slip-stream/blob/main/docs/getting-started.md)
+- [JSON Schemas](https://github.com/digitally-rendered/slip-stream/blob/main/docs/schemas.md)
+- [Decorators](https://github.com/digitally-rendered/slip-stream/blob/main/docs/decorators.md)
+- [Events](https://github.com/digitally-rendered/slip-stream/blob/main/docs/events.md)
+- [Filters](https://github.com/digitally-rendered/slip-stream/blob/main/docs/filters.md)
+- [Overrides](https://github.com/digitally-rendered/slip-stream/blob/main/docs/overrides.md)
+- [MCP Server](https://github.com/digitally-rendered/slip-stream/blob/main/docs/mcp.md)
+- [API Reference](https://github.com/digitally-rendered/slip-stream/blob/main/docs/api-reference.md)
