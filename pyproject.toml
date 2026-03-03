@@ -63,7 +63,7 @@ xmltodict = ">=0.13.0"
 pdoc = "^16.0.0"
 strawberry-graphql = {version = ">=0.235.0", extras = ["fastapi"]}
 mcp = ">=1.0.0"
-sqlalchemy = "^2.0.46"
+sqlalchemy = "^2.0.48"
 aiosqlite = "^0.22.1"
 schemathesis = ">=3.32.0"
 opentelemetry-api = ">=1.20.0"
