@@ -1,6 +1,6 @@
 # slip-stream
 
-[![CI](https://github.com/digitally-rendered/slip-stream/actions/workflows/ci.yml/badge.svg)](https://github.com/digitally-rendered/slip-stream/actions/workflows/ci.yml)
+[![CI](https://github.com/digitally-rendered/slip-stream/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/digitally-rendered/slip-stream/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/slip-stream)](https://pypi.org/project/slip-stream/)
 [![Python](https://img.shields.io/pypi/pyversions/slip-stream)](https://pypi.org/project/slip-stream/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
