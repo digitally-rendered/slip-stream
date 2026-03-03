@@ -7,21 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Pre-commit hooks: ruff (auto-fix), black (format), mypy (typecheck), pytest
-- Coverage threshold enforcement (75% minimum)
-- `py.typed` marker for PEP 561 typed package support
-- Dependabot for automated dependency updates
-- Schema contract tests for schema-to-endpoint round-trip validation
-- Performance benchmarks for schema parsing, model generation, CRUD operations
-- OpenAPI backward compatibility checking
-- MongoDB integration tests against real database in CI
-- CONTRIBUTING.md and SECURITY.md
-
-### Fixed
-- All mypy type errors resolved across 75 source files (no blanket `ignore_errors` overrides)
-- Unused imports and variables cleaned up across test suite
-
 ## [0.1.0] - 2026-02-23
 
 ### Added
@@ -53,6 +38,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Schemathesis-based fuzz testing with hex-architecture invariant checks
 - Comprehensive documentation (10 guides)
 - CLAUDE.md generation for new projects
+- Pre-commit hooks: ruff (auto-fix), black (format), mypy (typecheck), pytest
+- Coverage threshold enforcement (75% minimum)
+- `py.typed` marker for PEP 561 typed package support
+- Dependabot for automated dependency updates
+- Schema contract tests for schema-to-endpoint round-trip validation
+- Performance benchmarks for schema parsing, model generation, CRUD operations
+- OpenAPI backward compatibility checking
+- MongoDB integration tests against real database in CI
+- CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
+- GitHub issue/PR templates and CODEOWNERS
+- `llms.txt` and `llms-full.txt` for AI agent discoverability
+- Dockerfile for MCP server container
+- End-to-end onboarding tests
+
+### Fixed
+- All mypy type errors resolved across 75 source files (no blanket `ignore_errors` overrides)
+- Unused imports and variables cleaned up across test suite
 
 [Unreleased]: https://github.com/digitally-rendered/slip-stream/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/digitally-rendered/slip-stream/releases/tag/v0.1.0
