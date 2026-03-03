@@ -10,6 +10,29 @@ updates:
     labels:
       - "dependencies"
     groups:
+      production:
+        patterns:
+          - "fastapi"
+          - "motor"
+          - "pydantic"
+          - "pymongo"
+          - "dotted-dict"
+        update-types:
+          - "minor"
+          - "patch"
+      optional-extras:
+        patterns:
+          - "pyyaml"
+          - "xmltodict"
+          - "httpx"
+          - "strawberry-graphql"
+          - "mcp"
+          - "sqlalchemy"
+          - "schemathesis"
+          - "opentelemetry-*"
+        update-types:
+          - "minor"
+          - "patch"
       dev-dependencies:
         patterns:
           - "pytest*"
@@ -19,6 +42,9 @@ updates:
           - "types-*"
           - "pdoc"
           - "pre-commit"
+          - "aiosqlite"
+          - "greenlet"
+          - "mongomock-motor"
         update-types:
           - "minor"
           - "patch"
@@ -33,3 +59,7 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
