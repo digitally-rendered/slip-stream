@@ -78,6 +78,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --all-extras
 
+      - name: Install poetry-plugin-export
+        run: poetry self add poetry-plugin-export
+
       - name: Export requirements
         run: poetry export -f requirements.txt --all-extras --without-hashes -o requirements.txt
 
