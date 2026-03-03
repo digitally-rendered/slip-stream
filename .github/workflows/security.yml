@@ -82,7 +82,7 @@ jobs:
         run: poetry export -f requirements.txt --all-extras --without-hashes -o requirements.txt
 
       - name: pip-audit
-        uses: pypa/gh-action-pip-audit@v1
+        uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: requirements.txt
 
@@ -148,6 +148,7 @@ jobs:
           rules_file_name: ".zap/rules.tsv"
           cmd_options: "-a"
           fail_action: false
+          allow_issue_writing: false
 
       - name: Upload ZAP Report
         if: always()
