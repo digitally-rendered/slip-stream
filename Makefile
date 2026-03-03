@@ -1,4 +1,4 @@
-.PHONY: test lint typecheck coverage check docs docs-serve clean
+.PHONY: test lint typecheck coverage check docs docs-serve clean integration integration-up integration-down integration-test
 
 # Run tests
 test:
@@ -47,6 +47,24 @@ snapshot-api:
 # Run benchmarks
 bench:
 	poetry run pytest tests/benchmarks/ -v --benchmark-only
+
+# Start integration test services (MongoDB + PostgreSQL)
+integration-up:
+	docker compose up -d --wait
+
+# Stop integration test services
+integration-down:
+	docker compose down -v
+
+# Run integration tests (assumes services are already up)
+integration-test:
+	MONGO_URI=mongodb://localhost:27017 \
+	DATABASE_URL=postgresql+asyncpg://slip_stream_test:slip_stream_test@localhost:$${PG_PORT:-5432}/slip_stream_test \
+	poetry run pytest tests/integration/ -x -v
+
+# Full integration cycle: start services, run tests, stop services
+integration: integration-up
+	$(MAKE) integration-test; status=$$?; $(MAKE) integration-down; exit $$status
 
 # Clean build artifacts
 clean:

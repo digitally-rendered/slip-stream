@@ -30,10 +30,12 @@ pydantic = ">=2.0.0"
 pymongo = ">=4.0.0"
 pyyaml = {version = ">=6.0", optional = true}
 xmltodict = {version = ">=0.13.0", optional = true}
+defusedxml = {version = ">=0.7.0", optional = true}
 httpx = {version = ">=0.27.0", optional = true}
 strawberry-graphql = {version = ">=0.235.0", optional = true, extras = ["fastapi"]}
 mcp = {version = ">=1.0.0", optional = true}
 sqlalchemy = {version = ">=2.0.0", optional = true, extras = ["asyncio"]}
+asyncpg = {version = ">=0.29.0", optional = true}
 schemathesis = {version = ">=3.32.0", optional = true}
 opentelemetry-api = {version = ">=1.20.0", optional = true}
 opentelemetry-sdk = {version = ">=1.20.0", optional = true}
@@ -41,14 +43,14 @@ dotted-dict = "^1.1.3"
 
 [tool.poetry.extras]
 yaml = ["pyyaml"]
-xml = ["xmltodict"]
+xml = ["xmltodict", "defusedxml"]
 remote = ["httpx"]
 graphql = ["strawberry-graphql"]
 mcp = ["mcp"]
-sql = ["sqlalchemy"]
+sql = ["sqlalchemy", "asyncpg"]
 test = ["schemathesis"]
 telemetry = ["opentelemetry-api", "opentelemetry-sdk"]
-all = ["pyyaml", "xmltodict", "httpx", "strawberry-graphql", "mcp", "sqlalchemy", "schemathesis", "opentelemetry-api", "opentelemetry-sdk"]
+all = ["pyyaml", "xmltodict", "defusedxml", "httpx", "strawberry-graphql", "mcp", "sqlalchemy", "asyncpg", "schemathesis", "opentelemetry-api", "opentelemetry-sdk"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
@@ -60,11 +62,13 @@ mypy = ">=1.0.0"
 ruff = ">=0.4.0"
 pyyaml = ">=6.0"
 xmltodict = ">=0.13.0"
+defusedxml = ">=0.7.0"
 pdoc = "^16.0.0"
 strawberry-graphql = {version = ">=0.235.0", extras = ["fastapi"]}
 mcp = ">=1.0.0"
 sqlalchemy = "^2.0.48"
 aiosqlite = "^0.22.1"
+asyncpg = ">=0.29.0"
 schemathesis = ">=3.32.0"
 opentelemetry-api = ">=1.20.0"
 opentelemetry-sdk = ">=1.20.0"

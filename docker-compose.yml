@@ -1,0 +1,33 @@
+# Docker Compose for local integration testing.
+# Usage:
+#   docker compose up -d --wait    # start services
+#   make integration-test           # run tests (services must be up)
+#   docker compose down -v          # stop and clean up
+#
+# Or use the all-in-one target:
+#   make integration                # up → test → down
+
+services:
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: mongosh --eval 'db.runCommand({ping:1})' --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: slip_stream_test
+      POSTGRES_PASSWORD: slip_stream_test
+      POSTGRES_DB: slip_stream_test
+    healthcheck:
+      test: pg_isready -U slip_stream_test
+      interval: 5s
+      timeout: 5s
+      retries: 5

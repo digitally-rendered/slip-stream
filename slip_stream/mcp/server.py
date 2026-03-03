@@ -668,7 +668,20 @@ def create_mcp_server(
 
         output_path = args.get("output_path")
         if output_path:
-            Path(output_path).write_text(code)
+            # Validate output_path to prevent directory traversal
+            try:
+                resolved = Path(output_path).resolve()
+                resolved.relative_to(Path.cwd().resolve())
+            except ValueError:
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: output_path must be within the current working directory. "
+                        "Path traversal is not allowed.",
+                    )
+                ]
+
+            resolved.write_text(code)
             return [
                 TextContent(
                     type="text",

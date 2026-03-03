@@ -90,6 +90,7 @@ class SlipStreamConfig:
         schema_dir: Optional[str] = None,
         schema_vending: bool = False,
         schema_vending_prefix: str = "/schemas",
+        cors_origins: Optional[List[str]] = None,
     ) -> None:
         self.api_prefix = api_prefix
         self.structured_errors = structured_errors
@@ -104,6 +105,7 @@ class SlipStreamConfig:
         self.schema_dir = schema_dir
         self.schema_vending = schema_vending
         self.schema_vending_prefix = schema_vending_prefix
+        self.cors_origins: Optional[List[str]] = cors_origins
 
     @classmethod
     def from_file(cls, path: Path) -> SlipStreamConfig:
@@ -196,4 +198,5 @@ class SlipStreamConfig:
             schema_dir=app.get("schema_dir"),
             schema_vending=app.get("schema_vending", False),
             schema_vending_prefix=app.get("schema_vending_prefix", "/schemas"),
+            cors_origins=app.get("cors_origins"),
         )

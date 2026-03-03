@@ -107,6 +107,9 @@ class SlipStream:
         config: Optional[SlipStreamConfig] = None,
         telemetry: bool = False,
         tracer_provider: Optional[Any] = None,
+        graphql_max_depth: int = 10,
+        graphql_introspection: bool = True,
+        cors_origins: Optional[List[str]] = None,
     ) -> None:
         # Merge config values (constructor args override config file values)
         cfg = config
@@ -142,6 +145,17 @@ class SlipStream:
         self._graphql = graphql or (cfg.graphql_enabled if cfg else False)
         self._graphql_prefix = (
             graphql_prefix or (cfg.graphql_prefix if cfg else None) or "/graphql"
+        )
+
+        # GraphQL security
+        self._graphql_max_depth = graphql_max_depth
+        self._graphql_introspection = graphql_introspection
+
+        # CORS
+        self._cors_origins = cors_origins or (
+            cfg.cors_origins
+            if cfg and hasattr(cfg, "cors_origins") and cfg.cors_origins
+            else None
         )
 
         # Storage routing
@@ -452,6 +466,8 @@ class SlipStream:
                 schema_registry=registry,
                 get_current_user=self.get_current_user,
                 event_bus=self._event_bus,
+                max_query_depth=self._graphql_max_depth,
+                allow_introspection=self._graphql_introspection,
             )
             self.app.include_router(gql_router, prefix=self._graphql_prefix)
             logger.info("GraphQL API mounted at %s", self._graphql_prefix)
@@ -464,6 +480,24 @@ class SlipStream:
 
             install_error_handlers(self.app)
             logger.info("Structured error handlers installed")
+
+        # Install CORS middleware if origins were configured
+        if self._cors_origins:
+            from starlette.middleware.cors import CORSMiddleware
+
+            if "*" in self._cors_origins:
+                logger.warning(
+                    "CORS configured with wildcard origin '*'. "
+                    "This allows any origin and should not be used in production."
+                )
+            self.app.add_middleware(
+                CORSMiddleware,
+                allow_origins=self._cors_origins,
+                allow_methods=["*"],
+                allow_headers=["*"],
+                allow_credentials=True,
+            )
+            logger.info("CORS middleware installed for origins: %s", self._cors_origins)
 
         # Install filter chain middleware if filters were provided
         if self._filters:

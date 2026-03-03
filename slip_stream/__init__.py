@@ -29,6 +29,7 @@ from slip_stream.adapters.api.filters.etag import ETagFilter
 from slip_stream.adapters.api.filters.middleware import FilterChainMiddleware
 from slip_stream.adapters.api.filters.projection import FieldProjectionFilter
 from slip_stream.adapters.api.filters.schema_version import SchemaVersionFilter
+from slip_stream.adapters.api.filters.security_headers import SecurityHeadersFilter
 
 try:
     from slip_stream.adapters.api.graphql_factory import GraphQLFactory
@@ -143,6 +144,7 @@ __all__ = [
     "ETagFilter",
     "FieldProjectionFilter",
     "SchemaVersionFilter",
+    "SecurityHeadersFilter",
     # Context & Events
     "DottedDict",
     "RequestContext",

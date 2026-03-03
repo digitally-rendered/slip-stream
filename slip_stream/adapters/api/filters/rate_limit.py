@@ -82,6 +82,7 @@ class RateLimitFilter(FilterBase):
         key_func: Optional[Callable[[Request, FilterContext], str]] = None,
         skip_paths: Optional[List[str]] = None,
         clock: Optional[Callable[[], float]] = None,
+        trust_forwarded_for: bool = False,
     ) -> None:
         self.default_limit = default_limit
         self.default_window = default_window
@@ -89,6 +90,7 @@ class RateLimitFilter(FilterBase):
         self._key_func = key_func
         self.skip_paths: List[str] = skip_paths or []
         self._clock = clock or time.monotonic
+        self._trust_forwarded_for = trust_forwarded_for
 
         # ``_store`` maps rate-limit key -> deque of request timestamps.
         self._store: Dict[str, _Timestamps] = {}
@@ -216,12 +218,13 @@ class RateLimitFilter(FilterBase):
             if user_id:
                 return f"user:{user_id}"
 
-        # Fall back to client IP, honouring the X-Forwarded-For header when
-        # the application is behind a trusted reverse proxy.
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            # Take the leftmost (original client) address only.
-            return forwarded_for.split(",")[0].strip()
+        # Fall back to client IP, optionally honouring X-Forwarded-For when
+        # explicitly trusted (e.g. behind a known reverse proxy).
+        if self._trust_forwarded_for:
+            forwarded_for = request.headers.get("x-forwarded-for")
+            if forwarded_for:
+                # Take the leftmost (original client) address only.
+                return forwarded_for.split(",")[0].strip()
 
         if request.client:
             return request.client.host

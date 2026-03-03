@@ -18,7 +18,11 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import Response
 
-from slip_stream.adapters.api.filters.base import FilterBase, FilterContext
+from slip_stream.adapters.api.filters.base import (
+    FilterBase,
+    FilterContext,
+    FilterShortCircuit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +61,11 @@ def _dump_yaml(data: Any) -> str:
 
 
 def _load_xml(text: str) -> Any:
-    """Parse XML text, raising ImportError if xmltodict is not installed."""
+    """Parse XML text, raising ImportError if xmltodict is not installed.
+
+    When ``defusedxml`` is available, it monkey-patches stdlib XML parsers
+    to block entity expansion, DTD processing, and external entities.
+    """
     try:
         import xmltodict
     except ImportError as exc:
@@ -65,6 +73,12 @@ def _load_xml(text: str) -> Any:
             "XML support requires xmltodict. Install with: "
             "pip install slip-stream[xml]"
         ) from exc
+    try:
+        import defusedxml.minidom
+
+        defusedxml.defuse_stdlib()
+    except ImportError:
+        pass
     return xmltodict.parse(text)
 
 
@@ -105,6 +119,9 @@ class ContentNegotiationFilter(FilterBase):
 
     order: int = 50
 
+    def __init__(self, max_body_size: int = 1_048_576) -> None:
+        self._max_body_size = max_body_size
+
     async def on_request(self, request: Request, context: FilterContext) -> None:
         content_type = _parse_media_type(
             request.headers.get("content-type", "application/json")
@@ -114,12 +131,52 @@ class ContentNegotiationFilter(FilterBase):
         context.content_type = content_type
         context.accept = accept
 
+        # Enforce request body size limit
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > self._max_body_size:
+                    raise FilterShortCircuit(
+                        status_code=413,
+                        body=json.dumps(
+                            {
+                                "type": "https://slip-stream.dev/errors/payload-too-large",
+                                "title": "Payload Too Large",
+                                "status": 413,
+                                "detail": (
+                                    f"Request body size exceeds the maximum "
+                                    f"allowed size of {self._max_body_size} bytes."
+                                ),
+                            }
+                        ),
+                        headers={"Content-Type": "application/problem+json"},
+                    )
+            except ValueError:
+                pass  # Non-numeric content-length; let server handle it
+
         if content_type in _JSON_TYPES:
             return
 
         body = await request.body()
         if not body:
             return
+
+        if len(body) > self._max_body_size:
+            raise FilterShortCircuit(
+                status_code=413,
+                body=json.dumps(
+                    {
+                        "type": "https://slip-stream.dev/errors/payload-too-large",
+                        "title": "Payload Too Large",
+                        "status": 413,
+                        "detail": (
+                            f"Request body size exceeds the maximum "
+                            f"allowed size of {self._max_body_size} bytes."
+                        ),
+                    }
+                ),
+                headers={"Content-Type": "application/problem+json"},
+            )
 
         body_text = body.decode("utf-8")
 

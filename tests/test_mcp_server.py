@@ -552,7 +552,10 @@ class TestCallToolDispatcher:
         assert "class SlipStreamClient:" in text
 
     @pytest.mark.asyncio
-    async def test_generate_sdk_writes_to_output_path(self, registry, tmp_path):
+    async def test_generate_sdk_writes_to_output_path(
+        self, registry, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
         schemas_dir = tmp_path / "schemas"
         schemas_dir.mkdir()
         create_schema_file(schemas_dir, "item")
@@ -813,6 +816,63 @@ class TestCallToolDispatcher:
 
         data = json.loads(text)
         assert "schemas" in data
+
+    @pytest.mark.asyncio
+    async def test_generate_sdk_rejects_path_traversal(self, registry, tmp_path):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        create_schema_file(schemas_dir, "item")
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        # Attempt to write outside CWD via path traversal
+        text = await _call_tool(
+            srv, "generate_sdk", {"output_path": "/tmp/../../etc/malicious.py"}
+        )
+        assert "Error" in text
+        assert "Path traversal" in text or "current working directory" in text
+
+    @pytest.mark.asyncio
+    async def test_generate_sdk_rejects_absolute_path(self, registry, tmp_path):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        create_schema_file(schemas_dir, "item")
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        # Absolute path outside CWD
+        text = await _call_tool(
+            srv, "generate_sdk", {"output_path": "/tmp/sdk_output.py"}
+        )
+        assert "Error" in text
+
+    @pytest.mark.asyncio
+    async def test_generate_sdk_allows_relative_path(
+        self, registry, tmp_path, monkeypatch
+    ):
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        create_schema_file(schemas_dir, "item")
+
+        # Change CWD to tmp_path so relative paths resolve within it
+        monkeypatch.chdir(tmp_path)
+
+        srv = create_mcp_server(
+            schema_registry=registry,
+            base_url="http://localhost:8000",
+            schema_dir=str(schemas_dir),
+        )
+        output_file = "sdk_output.py"
+        text = await _call_tool(srv, "generate_sdk", {"output_path": output_file})
+        data = json.loads(text)
+        assert "written_to" in data
+        assert (tmp_path / "sdk_output.py").exists()
 
     @pytest.mark.asyncio
     async def test_get_topology_non_200_includes_status(self, server):

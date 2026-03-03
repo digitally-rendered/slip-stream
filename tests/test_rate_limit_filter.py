@@ -455,8 +455,55 @@ class TestSkipPaths:
 class TestForwardedFor:
 
     @pytest.mark.asyncio
-    async def test_x_forwarded_for_used_as_key(self):
+    async def test_forwarded_for_ignored_by_default(self):
+        """By default, X-Forwarded-For is NOT trusted — uses client IP instead."""
         f = RateLimitFilter(default_limit=1, default_window=60)
+
+        # Two requests from different proxied IPs but same client host
+        req1 = _make_request(
+            ip="192.168.1.1",
+            headers={"x-forwarded-for": "10.0.0.1"},
+        )
+        req2 = _make_request(
+            ip="192.168.1.1",
+            headers={"x-forwarded-for": "10.0.0.2"},
+        )
+
+        await f.on_request(req1, FilterContext())
+        # Same client IP (192.168.1.1) so should be blocked even though
+        # X-Forwarded-For differs
+        with pytest.raises(FilterShortCircuit):
+            await f.on_request(req2, FilterContext())
+
+    @pytest.mark.asyncio
+    async def test_forwarded_for_used_when_trusted(self):
+        """When trust_forwarded_for=True, X-Forwarded-For is used as key."""
+        f = RateLimitFilter(
+            default_limit=1, default_window=60, trust_forwarded_for=True
+        )
+
+        # Request comes from 10.0.0.1 via proxy at 192.168.1.1
+        request = _make_request(
+            ip="192.168.1.1",
+            headers={"x-forwarded-for": "10.0.0.1, 192.168.1.1"},
+        )
+        ctx = FilterContext()
+        await f.on_request(request, ctx)  # consumes 10.0.0.1's slot
+
+        # Second request with the same X-Forwarded-For should be blocked
+        request2 = _make_request(
+            ip="192.168.1.1",
+            headers={"x-forwarded-for": "10.0.0.1, 192.168.1.1"},
+        )
+        ctx2 = FilterContext()
+        with pytest.raises(FilterShortCircuit):
+            await f.on_request(request2, ctx2)
+
+    @pytest.mark.asyncio
+    async def test_x_forwarded_for_used_as_key(self):
+        f = RateLimitFilter(
+            default_limit=1, default_window=60, trust_forwarded_for=True
+        )
 
         # Request comes from 10.0.0.1 via proxy at 192.168.1.1
         request = _make_request(
@@ -477,7 +524,9 @@ class TestForwardedFor:
 
     @pytest.mark.asyncio
     async def test_different_forwarded_ips_tracked_separately(self):
-        f = RateLimitFilter(default_limit=1, default_window=60)
+        f = RateLimitFilter(
+            default_limit=1, default_window=60, trust_forwarded_for=True
+        )
 
         req_a = _make_request(headers={"x-forwarded-for": "11.0.0.1"})
         req_b = _make_request(headers={"x-forwarded-for": "11.0.0.2"})

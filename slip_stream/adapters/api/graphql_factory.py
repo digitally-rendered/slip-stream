@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import strawberry
+    from strawberry.extensions import SchemaExtension
     from strawberry.fastapi import GraphQLRouter
     from strawberry.scalars import JSON
     from strawberry.types import Info
@@ -37,6 +38,88 @@ try:
     HAS_STRAWBERRY = True
 except ImportError:
     HAS_STRAWBERRY = False
+
+
+def _measure_query_depth(document: Any) -> int:
+    """Walk a GraphQL AST and return the maximum nesting depth of selection sets."""
+    from graphql.language import ast as gql_ast
+
+    def _walk(node: Any, current: int) -> int:
+        if not hasattr(node, "selection_set") or node.selection_set is None:
+            return current
+        deepest = current + 1
+        for sel in node.selection_set.selections:
+            deepest = max(deepest, _walk(sel, current + 1))
+        return deepest
+
+    max_depth = 0
+    for defn in document.definitions:
+        if isinstance(defn, gql_ast.OperationDefinitionNode):
+            max_depth = max(max_depth, _walk(defn, 0))
+    return max_depth
+
+
+def _make_depth_limiter(max_depth: int) -> type:
+    """Create a Strawberry SchemaExtension class that limits query depth."""
+
+    class QueryDepthLimiter(SchemaExtension):  # type: ignore[misc]
+        """Rejects queries exceeding a maximum nesting depth."""
+
+        def on_execute(self) -> Any:  # type: ignore[override]
+            document = self.execution_context.graphql_document
+            if document is not None:
+                depth = _measure_query_depth(document)
+                if depth > max_depth:
+                    from graphql import GraphQLError
+
+                    self.execution_context.result = strawberry.types.ExecutionResult(
+                        data=None,
+                        errors=[
+                            GraphQLError(
+                                f"Query depth {depth} exceeds maximum allowed depth of {max_depth}"
+                            )
+                        ],
+                    )
+            yield
+
+    return QueryDepthLimiter
+
+
+def _make_introspection_blocker() -> type:
+    """Create a Strawberry SchemaExtension class that blocks introspection."""
+
+    class DisableIntrospection(SchemaExtension):  # type: ignore[misc]
+        """Blocks __schema and __type introspection queries."""
+
+        def on_execute(self) -> Any:  # type: ignore[override]
+            from graphql import GraphQLError
+            from graphql.language import ast as gql_ast
+
+            document = self.execution_context.graphql_document
+            if document is not None:
+                for defn in document.definitions:
+                    if (
+                        isinstance(defn, gql_ast.OperationDefinitionNode)
+                        and defn.selection_set
+                    ):
+                        for sel in defn.selection_set.selections:
+                            if isinstance(
+                                sel, gql_ast.FieldNode
+                            ) and sel.name.value in (
+                                "__schema",
+                                "__type",
+                            ):
+                                self.execution_context.result = (
+                                    strawberry.types.ExecutionResult(
+                                        data=None,
+                                        errors=[
+                                            GraphQLError("Introspection is disabled")
+                                        ],
+                                    )
+                                )
+            yield
+
+    return DisableIntrospection
 
 
 def _ensure_strawberry() -> None:
@@ -115,6 +198,8 @@ class GraphQLFactory:
         get_current_user: Any | None = None,
         event_bus: Any | None = None,
         custom_mutations: list[Any] | None = None,
+        max_query_depth: int = 10,
+        allow_introspection: bool = True,
     ) -> "GraphQLRouter":
         """Create a Strawberry GraphQLRouter with auto-generated types.
 
@@ -125,6 +210,8 @@ class GraphQLFactory:
             get_current_user: FastAPI dependency returning user dict.
             event_bus: Optional EventBus for lifecycle hooks.
             custom_mutations: Additional strawberry mutation fields to include.
+            max_query_depth: Maximum allowed query nesting depth (default: 10).
+            allow_introspection: Whether to allow introspection queries (default: True).
 
         Returns:
             A Strawberry GraphQLRouter ready to mount on FastAPI.
@@ -163,7 +250,13 @@ class GraphQLFactory:
             mode="mutation",
         )
 
-        graphql_schema = strawberry.Schema(query=Query, mutation=Mutation)
+        extensions: list[Any] = [_make_depth_limiter(max_query_depth)]
+        if not allow_introspection:
+            extensions.append(_make_introspection_blocker())
+
+        graphql_schema = strawberry.Schema(
+            query=Query, mutation=Mutation, extensions=extensions
+        )
         return GraphQLRouter(graphql_schema)
 
     def _to_pascal(self, name: str) -> str:
@@ -373,6 +466,7 @@ class GraphQLFactory:
             where: Optional[strawberry.scalars.JSON] = None,
             sort: Optional[str] = None,
         ) -> List[et]:  # type: ignore
+            limit = max(1, min(limit, 1000))
             db = await _resolve_db(info, get_db)
             request = info.context.get("request")
 

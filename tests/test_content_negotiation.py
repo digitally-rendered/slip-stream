@@ -13,7 +13,7 @@ from slip_stream.adapters.api.filters.content_negotiation import (
 from slip_stream.adapters.api.filters.middleware import FilterChainMiddleware
 
 
-def _create_app() -> FastAPI:
+def _create_app(max_body_size: int = 1_048_576) -> FastAPI:
     """Create a test app with the content negotiation filter."""
     app = FastAPI()
 
@@ -30,7 +30,7 @@ def _create_app() -> FastAPI:
         return [{"id": "1", "name": "A"}, {"id": "2", "name": "B"}]
 
     chain = FilterChain()
-    chain.add_filter(ContentNegotiationFilter())
+    chain.add_filter(ContentNegotiationFilter(max_body_size=max_body_size))
     app.add_middleware(FilterChainMiddleware, filter_chain=chain)
 
     return app
@@ -177,3 +177,80 @@ class TestContentNegotiationRoundTrip:
         assert response.status_code == 200
         data = yaml.safe_load(response.text)
         assert data["name"] == "cross-format"
+
+
+# ---------------------------------------------------------------------------
+# Request body size limit
+# ---------------------------------------------------------------------------
+
+
+class TestBodySizeLimit:
+
+    def test_body_over_limit_returns_413(self):
+        client = TestClient(_create_app(max_body_size=100))
+        large_body = yaml.dump({"name": "x" * 200})
+        response = client.post(
+            "/echo",
+            content=large_body,
+            headers={"Content-Type": "application/yaml"},
+        )
+        assert response.status_code == 413
+
+    def test_body_under_limit_passes(self):
+        client = TestClient(_create_app(max_body_size=10_000))
+        yaml_body = yaml.dump({"name": "small"})
+        response = client.post(
+            "/echo",
+            content=yaml_body,
+            headers={"Content-Type": "application/yaml"},
+        )
+        assert response.status_code == 200
+
+    def test_custom_max_body_size(self):
+        client = TestClient(_create_app(max_body_size=50))
+        # Body under 50 bytes
+        yaml_body = yaml.dump({"a": "b"})
+        response = client.post(
+            "/echo",
+            content=yaml_body,
+            headers={"Content-Type": "application/yaml"},
+        )
+        if len(yaml_body.encode()) <= 50:
+            assert response.status_code == 200
+        else:
+            assert response.status_code == 413
+
+
+# ---------------------------------------------------------------------------
+# XML safety (defusedxml)
+# ---------------------------------------------------------------------------
+
+
+class TestXmlSafety:
+
+    def test_xml_entity_expansion_blocked(self):
+        """If defusedxml is installed, entity expansion is blocked."""
+        try:
+            import defusedxml  # noqa: F401
+        except ImportError:
+            pytest.skip("defusedxml not installed")
+
+        # Use raise_server_exceptions=False so we get the 500 response
+        # instead of an unhandled exception propagation
+        client = TestClient(_create_app(), raise_server_exceptions=False)
+        # XML bomb — billion laughs attack (simplified)
+        xml_bomb = (
+            '<?xml version="1.0"?>'
+            "<!DOCTYPE lolz ["
+            '  <!ENTITY lol "lol">'
+            '  <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+            "]>"
+            "<item><name>&lol2;</name></item>"
+        )
+        response = client.post(
+            "/echo",
+            content=xml_bomb,
+            headers={"Content-Type": "application/xml"},
+        )
+        # xmltodict/defusedxml rejects entity expansion — results in 500
+        assert response.status_code >= 400

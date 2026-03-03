@@ -87,21 +87,14 @@ jobs:
           python -c "import slip_stream; print('Import OK')"
 
   integration:
-    name: Integration (MongoDB)
+    name: Integration (MongoDB + PostgreSQL)
     runs-on: ubuntu-latest
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Start services
+        run: docker compose up -d --wait
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -127,8 +120,12 @@ jobs:
       - name: Run integration tests
         env:
           MONGO_URI: mongodb://localhost:27017
-          DATABASE_NAME: slip_stream_integration_test
+          DATABASE_URL: postgresql+asyncpg://slip_stream_test:slip_stream_test@localhost:5432/slip_stream_test
         run: poetry run pytest tests/integration/ -x -q -v
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
 
   api-compat:
     name: API Backward Compatibility
