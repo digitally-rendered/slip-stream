@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -128,6 +129,7 @@ class TestSlipStreamVendingIntegration:
             schema_dir=schema_dir,
             schema_vending=True,
             schema_vending_prefix="/schemas",
+            get_db=AsyncMock(),
         )
 
         @asynccontextmanager
@@ -146,7 +148,7 @@ class TestSlipStreamVendingIntegration:
 
     def test_vending_disabled_by_default(self, schema_dir):
         app = FastAPI()
-        slip = SlipStream(app=app, schema_dir=schema_dir)
+        slip = SlipStream(app=app, schema_dir=schema_dir, get_db=AsyncMock())
 
         @asynccontextmanager
         async def lifespan(app):

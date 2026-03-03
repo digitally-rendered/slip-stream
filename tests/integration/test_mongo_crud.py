@@ -33,10 +33,10 @@ def registry():
 async def crud(real_db, registry):
     """Create a VersionedMongoCRUD for the widget schema."""
     doc_model, create_model, update_model = registry.get_model_for_version("widget")
-    collection = real_db["widget"]
     return VersionedMongoCRUD(
-        collection=collection,
-        document_model=doc_model,
+        db=real_db,
+        collection_name="widget",
+        model=doc_model,
         create_model=create_model,
         update_model=update_model,
     )

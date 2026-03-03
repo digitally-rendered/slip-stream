@@ -54,5 +54,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive documentation (10 guides)
 - CLAUDE.md generation for new projects
 
-[Unreleased]: https://github.com/draw/slip-stream/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/draw/slip-stream/releases/tag/v0.1.0
+[Unreleased]: https://github.com/digitally-rendered/slip-stream/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/digitally-rendered/slip-stream/releases/tag/v0.1.0

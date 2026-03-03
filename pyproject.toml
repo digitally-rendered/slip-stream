@@ -15,6 +15,13 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[tool.poetry.urls]
+Homepage = "https://github.com/digitally-rendered/slip-stream"
+Repository = "https://github.com/digitally-rendered/slip-stream"
+Documentation = "https://github.com/digitally-rendered/slip-stream/tree/main/docs"
+Changelog = "https://github.com/digitally-rendered/slip-stream/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/digitally-rendered/slip-stream/issues"
+
 [tool.poetry.dependencies]
 python = "^3.12"
 fastapi = ">=0.115.0"

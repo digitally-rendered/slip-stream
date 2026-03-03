@@ -1,5 +1,10 @@
 # slip-stream
 
+[![CI](https://github.com/digitally-rendered/slip-stream/actions/workflows/ci.yml/badge.svg)](https://github.com/digitally-rendered/slip-stream/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/slip-stream)](https://pypi.org/project/slip-stream/)
+[![Python](https://img.shields.io/pypi/pyversions/slip-stream)](https://pypi.org/project/slip-stream/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 JSON Schema-driven hexagonal backend framework for FastAPI + MongoDB.
 
 Drop a JSON schema file, get full CRUD API endpoints with versioned MongoDB persistence. No boilerplate, fully overridable at every layer.
@@ -351,6 +356,17 @@ slip = SlipStream(
     controllers_module="myapp.controllers", # Custom endpoints
 )
 ```
+
+## MCP Server (AI Agent Integration)
+
+slip-stream includes an [MCP](https://modelcontextprotocol.io/) server so AI assistants can discover schemas, query APIs, and generate code:
+
+```bash
+pip install slip-stream[mcp]
+python -m slip_stream.mcp.server --schema-dir ./schemas --base-url http://localhost:8000
+```
+
+11 tools: `list_schemas`, `get_schema`, `describe_entity`, `query_rest_api`, `query_graphql`, `create_schema`, `generate_sdk`, and more. See [MCP docs](docs/mcp.md).
 
 ## CLI
 

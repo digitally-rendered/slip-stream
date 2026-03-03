@@ -6,7 +6,7 @@ Thank you for your interest in contributing to slip-stream.
 
 ```bash
 # Clone the repository
-git clone https://github.com/draw/slip-stream.git
+git clone https://github.com/digitally-rendered/slip-stream.git
 cd slip-stream
 
 # Install dependencies (requires Poetry and Python 3.12+)
@@ -23,7 +23,7 @@ make check
 
 ### Before You Code
 
-1. Check existing [issues](https://github.com/draw/slip-stream/issues) for related work
+1. Check existing [issues](https://github.com/digitally-rendered/slip-stream/issues) for related work
 2. For non-trivial changes, open an issue first to discuss the approach
 3. Create a feature branch from `main`
 
@@ -75,7 +75,7 @@ make bench             # Run performance benchmarks
 1. Ensure `make check` passes (lint + types + tests + coverage)
 2. Update `CHANGELOG.md` with your changes
 3. Write a clear PR description explaining **why**, not just what
-4. PRs require passing CI on Python 3.12 and 3.13
+4. PRs require passing CI on Python 3.13 and 3.14
 
 ## Commit Messages
 
