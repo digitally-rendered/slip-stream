@@ -1,5 +1,6 @@
 .PHONY: test lint typecheck coverage check docs docs-serve clean integration integration-up integration-down integration-test \
-	bench-perf bench-load bench-breaking bench-constrained bench-limits bench-compat bench-compat-docker bench-compare-docker bench-clean
+	bench-perf bench-load bench-breaking bench-constrained bench-limits bench-compat bench-compat-docker bench-compare-docker bench-clean \
+	bench-fuzz bench-stream bench-stream-e2e
 
 # Run tests
 test:
@@ -117,6 +118,32 @@ bench-compare-docker:
 	docker compose -f benchmarks/docker-compose.compat.yml --profile perf run k6-perf-stellar & \
 	wait
 	docker compose -f benchmarks/docker-compose.compat.yml down -v
+
+# --- Fuzz testing targets ---
+
+# Run schemathesis fuzz tests against local app (must be running on :8100)
+bench-fuzz:
+	python benchmarks/fuzz/run_fuzz.py --url http://localhost:8100/api/v1 --mode all --output benchmarks/results/fuzz-results.json
+
+# Run schemathesis fuzz tests in Docker
+bench-fuzz-docker:
+	docker compose -f benchmarks/docker-compose.yml up -d --build
+	docker compose -f benchmarks/docker-compose.yml exec slip-stream python benchmarks/fuzz/run_fuzz.py --url http://localhost:8100/api/v1 --mode all
+	docker compose -f benchmarks/docker-compose.yml down -v
+
+# --- Stream testing targets ---
+
+# Run InMemory stream micro-benchmarks
+bench-stream:
+	poetry run pytest benchmarks/stream/ --benchmark-only -v --benchmark-json=benchmarks/results/stream-bench.json
+
+# Run stream e2e tests with Docker brokers
+bench-stream-e2e:
+	docker compose -f benchmarks/docker-compose.streams.yml up -d --build
+	docker compose -f benchmarks/docker-compose.streams.yml --profile test run k6-stream; \
+	status=$$?; \
+	docker compose -f benchmarks/docker-compose.streams.yml down -v; \
+	exit $$status
 
 # Clean benchmark results
 bench-clean:

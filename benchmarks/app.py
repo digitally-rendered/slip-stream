@@ -10,6 +10,7 @@ Environment variables:
     BENCH_SCHEMA_DIR  — Schema directory (default: benchmarks/schemas)
     BENCH_BACKEND     — Storage backend: mongo or sql (default: mongo)
     BENCH_SQL_URL     — SQL connection string for sql backend
+    BENCH_STREAM      — Stream adapter: none, memory (default: none)
 """
 
 import os
@@ -25,6 +26,7 @@ MONGO_URI = os.environ.get("BENCH_MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("BENCH_DB_NAME", "slip_stream_bench")
 BACKEND = os.environ.get("BENCH_BACKEND", "mongo")
 SQL_URL = os.environ.get("BENCH_SQL_URL", "")
+STREAM = os.environ.get("BENCH_STREAM", "none")
 
 
 def create_app() -> FastAPI:
@@ -57,10 +59,29 @@ def create_app() -> FastAPI:
 
     slip = SlipStream(app=FastAPI(), **kwargs)
 
+    # Wire streaming if requested
+    stream_bridge = None
+    if STREAM != "none":
+        from slip_stream.adapters.streaming.base import (
+            EventStreamBridge,
+            InMemoryStream,
+        )
+
+        if STREAM == "memory":
+            adapter = InMemoryStream()
+        else:
+            adapter = InMemoryStream()  # fallback to memory for now
+
+        stream_bridge = EventStreamBridge(adapters=[adapter])
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with slip.lifespan():
+            if stream_bridge is not None and hasattr(slip, "_event_bus"):
+                stream_bridge.register(slip._event_bus)
             yield
+            if stream_bridge is not None:
+                await stream_bridge.close()
 
     app = FastAPI(
         title="slip-stream Benchmark",
