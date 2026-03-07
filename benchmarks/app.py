@@ -29,12 +29,17 @@ SQL_URL = os.environ.get("BENCH_SQL_URL", "")
 
 def create_app() -> FastAPI:
     """Create a minimal benchmark app — no filters, no middleware overhead."""
+
+    async def _noop_user():
+        return {"id": "bench", "name": "benchmark"}
+
     kwargs: dict = {
         "schema_dir": SCHEMA_DIR,
         "api_prefix": "/api/v1",
         "mongo_uri": MONGO_URI,
         "database_name": DB_NAME,
         "structured_errors": True,
+        "get_current_user": _noop_user,
     }
 
     if BACKEND == "sql" and SQL_URL:
