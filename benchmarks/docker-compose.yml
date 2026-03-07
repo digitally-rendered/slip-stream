@@ -1,0 +1,77 @@
+# docker-compose for benchmark testing with resource constraints.
+#
+# Usage:
+#   docker compose -f benchmarks/docker-compose.yml up -d           # start all
+#   docker compose -f benchmarks/docker-compose.yml up -d mongo     # just DB
+#   docker compose -f benchmarks/docker-compose.yml run k6-perf     # run perf tests
+#   docker compose -f benchmarks/docker-compose.yml run k6-compat   # run compat tests
+#   docker compose -f benchmarks/docker-compose.yml down -v         # cleanup
+#
+# Constrained testing (edit deploy.resources below or override):
+#   SLIP_CPU=0.5 SLIP_MEM=256m docker compose -f benchmarks/docker-compose.yml up -d
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27117:27017"   # offset to avoid conflict with local MongoDB
+    healthcheck:
+      test: mongosh --eval 'db.runCommand({ping:1})' --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  slip-stream:
+    build:
+      context: ..
+      dockerfile: benchmarks/Dockerfile
+    ports:
+      - "8100:8100"
+    environment:
+      - BENCH_MONGO_URI=mongodb://mongo:27017
+      - BENCH_DB_NAME=slip_stream_bench
+      - BENCH_PORT=8100
+    depends_on:
+      mongo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "${SLIP_CPU:-2}"
+          memory: "${SLIP_MEM:-1g}"
+
+  k6-perf:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6:/scripts
+      - ./results:/results
+    working_dir: /scripts
+    environment:
+      - BASE_URL=http://slip-stream:8100/api/v1
+      - SCENARIO=${K6_SCENARIO:-smoke}
+      - ENTITIES=${K6_ENTITIES:-pet,order,user,tag,category}
+    entrypoint: ["k6", "run", "/scripts/perf_baseline.js", "--summary-export=/results/k6-docker-summary.json"]
+    depends_on:
+      slip-stream:
+        condition: service_healthy
+    profiles:
+      - test
+
+  k6-compat:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6:/scripts
+      - ./results:/results
+    working_dir: /scripts
+    environment:
+      - APP_A_URL=http://slip-stream:8100/api/v1
+      - APP_B_URL=http://stellar-drive:8200/api/v1
+      - APP_A_NAME=slip-stream
+      - APP_B_NAME=stellar-drive
+      - ENTITIES=${K6_ENTITIES:-pet,order,user,tag,category}
+    entrypoint: ["k6", "run", "/scripts/compat_test.js"]
+    depends_on:
+      slip-stream:
+        condition: service_healthy
+    profiles:
+      - compat

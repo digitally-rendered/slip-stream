@@ -1,0 +1,54 @@
+{
+  "pet": {
+    "create": {
+      "name": "Buddy",
+      "status": "available",
+      "category": "Dogs",
+      "tags": ["friendly", "trained"],
+      "photo_urls": ["https://example.com/buddy.jpg"]
+    },
+    "update": {
+      "status": "sold"
+    }
+  },
+  "order": {
+    "create": {
+      "pet_id": "placeholder",
+      "quantity": 1,
+      "status": "placed",
+      "complete": false
+    },
+    "update": {
+      "status": "approved"
+    }
+  },
+  "user": {
+    "create": {
+      "username": "benchuser",
+      "email": "bench@example.com",
+      "first_name": "Bench",
+      "last_name": "User",
+      "phone": "555-0100",
+      "user_status": 1
+    },
+    "update": {
+      "user_status": 0
+    }
+  },
+  "tag": {
+    "create": {
+      "name": "benchmark-tag"
+    },
+    "update": {
+      "name": "benchmark-tag-updated"
+    }
+  },
+  "category": {
+    "create": {
+      "name": "benchmark-category"
+    },
+    "update": {
+      "name": "benchmark-category-updated"
+    }
+  }
+}
