@@ -1,0 +1,14 @@
+app:
+  api_prefix: /api/v1
+  schema_dir: ./benchmarks/schemas
+  structured_errors: true
+
+databases:
+  mongo:
+    uri: mongodb://localhost:27017
+    name: slip_stream_bench
+  sql:
+    url: postgresql+asyncpg://draw@localhost:5432/slip_stream_bench
+
+storage:
+  default: mongo

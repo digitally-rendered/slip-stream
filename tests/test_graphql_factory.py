@@ -633,3 +633,429 @@ class TestGraphQLLifecycle:
         info = self._make_fake_info()
         result = await resolver(info, str(uuid.uuid4()))
         assert result is None
+
+
+class TestVersionedGraphQLFactory:
+    """Tests for versioned=True mode in GraphQLFactory."""
+
+    @pytest.fixture
+    def registry_with_two_versions(self, tmp_path):
+        """A SchemaRegistry with widget at 1.0.0 and 2.0.0."""
+        SchemaRegistry.reset()
+        registry = SchemaRegistry(schema_dir=tmp_path)
+        base_properties = {
+            "id": {"type": "string", "format": "uuid"},
+            "entity_id": {"type": "string", "format": "uuid"},
+            "schema_version": {"type": "string"},
+            "record_version": {"type": "integer"},
+            "created_at": {"type": "string", "format": "date-time"},
+            "updated_at": {"type": "string", "format": "date-time"},
+            "name": {"type": "string"},
+            "color": {"type": "string", "default": "blue"},
+        }
+        registry.register_schema(
+            "widget",
+            {
+                "type": "object",
+                "version": "1.0.0",
+                "required": ["name"],
+                "properties": base_properties,
+            },
+            version="1.0.0",
+        )
+        registry.register_schema(
+            "widget",
+            {
+                "type": "object",
+                "version": "2.0.0",
+                "required": ["name"],
+                "properties": {
+                    **base_properties,
+                    "weight": {"type": "number", "default": 0.0},
+                },
+            },
+            version="2.0.0",
+        )
+        return registry
+
+    @pytest.fixture
+    def container_for_versioned(self, registry_with_two_versions):
+        container = EntityContainer()
+        container.resolve_all(["widget"])
+        return container
+
+    def test_versioned_router_builds_without_error(
+        self, container_for_versioned, registry_with_two_versions
+    ):
+        """create_graphql_router(versioned=True) builds a valid Strawberry router."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        factory = GraphQLFactory()
+        router = factory.create_graphql_router(
+            container=container_for_versioned,
+            get_db=lambda: None,
+            schema_registry=registry_with_two_versions,
+            versioned=True,
+        )
+        assert router is not None
+
+    def test_versioned_entity_types_created(
+        self, container_for_versioned, registry_with_two_versions
+    ):
+        """With two versions, versioned_entity_types contains entries for both."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        factory = GraphQLFactory()
+        registrations = container_for_versioned.get_all()
+        entity_types: dict = {}
+        versioned_entity_types: dict = {}
+
+        for schema_name, reg in registrations.items():
+            pascal = factory._to_pascal(schema_name)
+            schema = registry_with_two_versions.get_schema(schema_name, "latest")
+            entity_type = factory._create_entity_type(
+                pascal, schema.get("properties", {}), schema_name
+            )
+            entity_types[schema_name] = entity_type
+
+            all_versions = registry_with_two_versions.get_all_versions(schema_name)
+            latest_ver = registry_with_two_versions.get_latest_version(schema_name)
+            for version in all_versions:
+                if version == latest_ver:
+                    versioned_entity_types[(schema_name, version)] = entity_type
+                    continue
+                sanitized = version.replace(".", "_")
+                ver_schema = registry_with_two_versions.get_schema(schema_name, version)
+                ver_type = factory._create_entity_type(
+                    f"{pascal}V{sanitized}",
+                    ver_schema.get("properties", {}),
+                    schema_name,
+                )
+                versioned_entity_types[(schema_name, version)] = ver_type
+
+        assert ("widget", "1.0.0") in versioned_entity_types
+        assert ("widget", "2.0.0") in versioned_entity_types
+
+        # v1 type should have a versioned name; v2 (latest) reuses the plain name
+        v1_type = versioned_entity_types[("widget", "1.0.0")]
+        v2_type = versioned_entity_types[("widget", "2.0.0")]
+        assert v1_type.__name__ == "WidgetV1_0_0"
+        assert v2_type.__name__ == "Widget"
+
+    def test_versioned_router_exposes_versioned_query_methods(
+        self, container_for_versioned, registry_with_two_versions
+    ):
+        """Versioned router includes get_widget_v1_0_0 and list_widgets_v1_0_0 fields."""
+
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        factory = GraphQLFactory()
+        registrations = container_for_versioned.get_all()
+        entity_types: dict = {}
+        versioned_entity_types: dict = {}
+
+        for schema_name, reg in registrations.items():
+            pascal = factory._to_pascal(schema_name)
+            schema = registry_with_two_versions.get_schema(schema_name, "latest")
+            entity_type = factory._create_entity_type(
+                pascal, schema.get("properties", {}), schema_name
+            )
+            entity_types[schema_name] = entity_type
+
+            all_versions = registry_with_two_versions.get_all_versions(schema_name)
+            latest_ver = registry_with_two_versions.get_latest_version(schema_name)
+            for version in all_versions:
+                if version == latest_ver:
+                    versioned_entity_types[(schema_name, version)] = entity_type
+                    continue
+                sanitized = version.replace(".", "_")
+                ver_schema = registry_with_two_versions.get_schema(schema_name, version)
+                ver_type = factory._create_entity_type(
+                    f"{pascal}V{sanitized}",
+                    ver_schema.get("properties", {}),
+                    schema_name,
+                )
+                versioned_entity_types[(schema_name, version)] = ver_type
+
+        Query = factory._build_schema_class(
+            "Query",
+            registrations,
+            entity_types,
+            registry_with_two_versions,
+            lambda: None,
+            None,
+            mode="query",
+            versioned_entity_types=versioned_entity_types,
+        )
+
+        # Strawberry exposes fields via __strawberry_definition__
+        field_names = {f.name for f in Query.__strawberry_definition__.fields}
+        # Unversioned latest methods
+        assert "get_widget" in field_names
+        assert "list_widgets" in field_names
+        # Versioned aliases for v1 (older)
+        assert "get_widget_v1_0_0" in field_names
+        assert "list_widgets_v1_0_0" in field_names
+        # Versioned aliases for v2 (latest)
+        assert "get_widget_v2_0_0" in field_names
+        assert "list_widgets_v2_0_0" in field_names
+
+    def test_versioned_router_exposes_versioned_mutation_methods(
+        self, container_for_versioned, registry_with_two_versions
+    ):
+        """Versioned router includes create/update/delete mutation aliases per version."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        factory = GraphQLFactory()
+        registrations = container_for_versioned.get_all()
+        entity_types: dict = {}
+        versioned_entity_types: dict = {}
+
+        for schema_name, reg in registrations.items():
+            pascal = factory._to_pascal(schema_name)
+            schema = registry_with_two_versions.get_schema(schema_name, "latest")
+            entity_type = factory._create_entity_type(
+                pascal, schema.get("properties", {}), schema_name
+            )
+            entity_types[schema_name] = entity_type
+
+            all_versions = registry_with_two_versions.get_all_versions(schema_name)
+            latest_ver = registry_with_two_versions.get_latest_version(schema_name)
+            for version in all_versions:
+                if version == latest_ver:
+                    versioned_entity_types[(schema_name, version)] = entity_type
+                    continue
+                sanitized = version.replace(".", "_")
+                ver_schema = registry_with_two_versions.get_schema(schema_name, version)
+                ver_type = factory._create_entity_type(
+                    f"{pascal}V{sanitized}",
+                    ver_schema.get("properties", {}),
+                    schema_name,
+                )
+                versioned_entity_types[(schema_name, version)] = ver_type
+
+        Mutation = factory._build_schema_class(
+            "Mutation",
+            registrations,
+            entity_types,
+            registry_with_two_versions,
+            lambda: None,
+            None,
+            mode="mutation",
+            versioned_entity_types=versioned_entity_types,
+        )
+
+        field_names = {f.name for f in Mutation.__strawberry_definition__.fields}
+        # Unversioned latest mutations
+        assert "create_widget" in field_names
+        assert "update_widget" in field_names
+        assert "delete_widget" in field_names
+        # Versioned aliases for v1 (older)
+        assert "create_widget_v1_0_0" in field_names
+        assert "update_widget_v1_0_0" in field_names
+        assert "delete_widget_v1_0_0" in field_names
+        # Versioned aliases for v2 (latest)
+        assert "create_widget_v2_0_0" in field_names
+        assert "update_widget_v2_0_0" in field_names
+        assert "delete_widget_v2_0_0" in field_names
+
+    @pytest.mark.asyncio
+    async def test_versioned_get_resolver_sets_schema_version_on_ctx(
+        self, registry_with_two_versions
+    ):
+        """A versioned get resolver stamps ctx.schema_version = the pinned version."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        captured_versions: list[str | None] = []
+
+        entity = SimpleNamespace(
+            model_dump=lambda: {"id": str(uuid.uuid4()), "name": "test"},
+        )
+        mock_repo = AsyncMock()
+        mock_repo.get_by_entity_id = AsyncMock(return_value=entity)
+
+        reg = SimpleNamespace(
+            schema_name="widget",
+            repository_class=MagicMock(return_value=mock_repo),
+            services={},
+            handler_overrides={},
+        )
+
+        bus = EventBus()
+
+        async def capture_version(ctx):
+            captured_versions.append(ctx.schema_version)
+
+        bus.register("pre_get", capture_version, schema_name="widget")
+
+        factory = GraphQLFactory()
+        schema = registry_with_two_versions.get_schema("widget", "1.0.0")
+        et = factory._create_entity_type(
+            "WidgetV1_0_0", schema.get("properties", {}), "widget"
+        )
+
+        resolver = factory._make_get_resolver(
+            "widget", et, reg, lambda: None, event_bus=bus, schema_version="1.0.0"
+        )
+
+        info = SimpleNamespace(context={})
+        await resolver(info, str(uuid.uuid4()))
+
+        assert captured_versions == ["1.0.0"]
+
+    @pytest.mark.asyncio
+    async def test_versioned_create_resolver_sets_schema_version_on_ctx(
+        self, registry_with_two_versions
+    ):
+        """A versioned create resolver stamps ctx.schema_version = the pinned version."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        import strawberry
+
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        captured_versions: list[str | None] = []
+        entity = SimpleNamespace(
+            model_dump=lambda: {"id": str(uuid.uuid4()), "name": "test"},
+        )
+        mock_svc = AsyncMock()
+        mock_svc.execute = AsyncMock(return_value=entity)
+
+        reg = SimpleNamespace(
+            schema_name="widget",
+            repository_class=MagicMock(return_value=AsyncMock()),
+            services={"create": MagicMock(return_value=mock_svc)},
+            handler_overrides={},
+            create_model=lambda **kw: SimpleNamespace(**kw),
+            update_model=lambda **kw: SimpleNamespace(**kw),
+        )
+
+        bus = EventBus()
+
+        async def capture_version(ctx):
+            captured_versions.append(ctx.schema_version)
+
+        bus.register("pre_create", capture_version, schema_name="widget")
+
+        factory = GraphQLFactory()
+        schema = registry_with_two_versions.get_schema("widget", "1.0.0")
+        et = factory._create_entity_type(
+            "WidgetV1_0_0", schema.get("properties", {}), "widget"
+        )
+        ci, _ = factory._create_input_types(
+            "WidgetV1_0_0", schema.get("properties", {}), schema.get("required", [])
+        )
+
+        resolver = factory._make_create_resolver(
+            "widget", et, ci, reg, lambda: None, event_bus=bus, schema_version="1.0.0"
+        )
+
+        info = SimpleNamespace(context={})
+        original_asdict = strawberry.asdict
+        strawberry.asdict = lambda x: {"name": "test"}
+        try:
+            await resolver(info, SimpleNamespace(name="test"))
+        finally:
+            strawberry.asdict = original_asdict
+
+        assert captured_versions == ["1.0.0"]
+
+    def test_versioned_false_does_not_add_versioned_methods(
+        self, container_for_versioned, registry_with_two_versions
+    ):
+        """When versioned=False (default), no versioned methods appear on Query."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        factory = GraphQLFactory()
+        registrations = container_for_versioned.get_all()
+        entity_types: dict = {}
+        for schema_name, reg in registrations.items():
+            pascal = factory._to_pascal(schema_name)
+            schema = registry_with_two_versions.get_schema(schema_name, "latest")
+            entity_types[schema_name] = factory._create_entity_type(
+                pascal, schema.get("properties", {}), schema_name
+            )
+
+        Query = factory._build_schema_class(
+            "Query",
+            registrations,
+            entity_types,
+            registry_with_two_versions,
+            lambda: None,
+            None,
+            mode="query",
+            versioned_entity_types=None,
+        )
+
+        field_names = {f.name for f in Query.__strawberry_definition__.fields}
+        assert "get_widget_v1_0_0" not in field_names
+        assert "list_widgets_v1_0_0" not in field_names
+
+    def test_graceful_fallback_when_get_all_versions_unavailable(
+        self, container_for_versioned
+    ):
+        """When get_all_versions raises ValueError, versioned mode falls back gracefully."""
+        from slip_stream.adapters.api.graphql_factory import GraphQLFactory
+
+        class LimitedRegistry:
+            """A registry without multi-version support."""
+
+            def get_schema(self, name: str, version: str = "latest") -> dict:
+                return {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                    },
+                }
+
+            def get_all_versions(self, name: str) -> list[str]:
+                raise ValueError("No versioning support")
+
+            def get_latest_version(self, name: str) -> str:
+                raise ValueError("No versioning support")
+
+        factory = GraphQLFactory()
+        limited = LimitedRegistry()
+
+        # Should not raise; versioned_entity_types should be empty
+        registrations = container_for_versioned.get_all()
+        entity_types: dict = {}
+        versioned_entity_types: dict = {}
+
+        for schema_name, reg in registrations.items():
+            pascal = factory._to_pascal(schema_name)
+            schema = limited.get_schema(schema_name, "latest")
+            entity_type = factory._create_entity_type(
+                pascal, schema.get("properties", {}), schema_name
+            )
+            entity_types[schema_name] = entity_type
+
+            try:
+                all_versions = limited.get_all_versions(schema_name)
+            except (ValueError, AttributeError):
+                all_versions = []
+
+            try:
+                latest_ver = limited.get_latest_version(schema_name)
+            except (ValueError, AttributeError):
+                latest_ver = None
+
+            for version in all_versions:
+                if version == latest_ver:
+                    versioned_entity_types[(schema_name, version)] = entity_type
+                    continue
+                try:
+                    ver_schema = limited.get_schema(schema_name, version)
+                except (ValueError, AttributeError):
+                    continue
+                sanitized = version.replace(".", "_")
+                ver_type = factory._create_entity_type(
+                    f"{pascal}V{sanitized}",
+                    ver_schema.get("properties", {}),
+                    schema_name,
+                )
+                versioned_entity_types[(schema_name, version)] = ver_type
+
+        assert versioned_entity_types == {}

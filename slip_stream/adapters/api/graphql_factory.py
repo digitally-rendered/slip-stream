@@ -200,6 +200,7 @@ class GraphQLFactory:
         custom_mutations: list[Any] | None = None,
         max_query_depth: int = 10,
         allow_introspection: bool = True,
+        versioned: bool = False,
     ) -> "GraphQLRouter":
         """Create a Strawberry GraphQLRouter with auto-generated types.
 
@@ -212,6 +213,9 @@ class GraphQLFactory:
             custom_mutations: Additional strawberry mutation fields to include.
             max_query_depth: Maximum allowed query nesting depth (default: 10).
             allow_introspection: Whether to allow introspection queries (default: True).
+            versioned: When ``True``, expose per-version types (e.g. ``PetV1_0_0``)
+                alongside the unversioned latest type (``Pet``). Versioned resolvers
+                set ``ctx.schema_version`` so version-aware handler overrides fire.
 
         Returns:
             A Strawberry GraphQLRouter ready to mount on FastAPI.
@@ -219,7 +223,13 @@ class GraphQLFactory:
         _ensure_strawberry()
 
         registrations = container.get_all()
+
+        # entity_types maps schema_name -> latest (unversioned) Strawberry type
         entity_types: dict[str, type] = {}
+
+        # versioned_entity_types maps (schema_name, version) -> Strawberry type
+        # Only populated when versioned=True
+        versioned_entity_types: dict[tuple[str, str], type] = {}
 
         for schema_name, reg in registrations.items():
             pascal = self._to_pascal(schema_name)
@@ -228,6 +238,36 @@ class GraphQLFactory:
 
             entity_type = self._create_entity_type(pascal, properties, schema_name)
             entity_types[schema_name] = entity_type
+
+            if versioned:
+                try:
+                    all_versions = schema_registry.get_all_versions(schema_name)
+                except (ValueError, AttributeError):
+                    all_versions = []
+
+                try:
+                    latest_ver = schema_registry.get_latest_version(schema_name)
+                except (ValueError, AttributeError):
+                    latest_ver = None
+
+                for version in all_versions:
+                    # The latest version uses the plain unversioned type already
+                    # created above; no need to duplicate it.
+                    if version == latest_ver:
+                        versioned_entity_types[(schema_name, version)] = entity_type
+                        continue
+
+                    sanitized = version.replace(".", "_")
+                    versioned_pascal = f"{pascal}V{sanitized}"
+                    try:
+                        ver_schema = schema_registry.get_schema(schema_name, version)
+                    except (ValueError, AttributeError):
+                        continue
+                    ver_properties = ver_schema.get("properties", {})
+                    ver_type = self._create_entity_type(
+                        versioned_pascal, ver_properties, schema_name
+                    )
+                    versioned_entity_types[(schema_name, version)] = ver_type
 
         # Build schema using @strawberry.type decorated classes
         # We need to construct Query and Mutation with proper methods
@@ -239,6 +279,7 @@ class GraphQLFactory:
             get_db,
             event_bus,
             mode="query",
+            versioned_entity_types=versioned_entity_types,
         )
         Mutation = self._build_schema_class(
             "Mutation",
@@ -248,6 +289,7 @@ class GraphQLFactory:
             get_db,
             event_bus,
             mode="mutation",
+            versioned_entity_types=versioned_entity_types,
         )
 
         extensions: list[Any] = [_make_depth_limiter(max_query_depth)]
@@ -337,12 +379,19 @@ class GraphQLFactory:
         get_db: Any,
         event_bus: Any,
         mode: str,
+        versioned_entity_types: dict[tuple[str, str], type] | None = None,
     ) -> type:
         """Build a Strawberry-decorated Query or Mutation class.
 
         Strawberry requires types used in resolver annotations to be resolvable
         from the module's global scope. We register dynamically-created types
         in the graphql_factory module globals so Strawberry can find them.
+
+        When ``versioned_entity_types`` is non-empty, additional versioned
+        resolver methods are emitted for every ``(schema_name, version)`` pair
+        that differs from the latest version.  The latest version's resolvers
+        are the canonical unversioned ones (e.g. ``get_pet``) *and* a versioned
+        alias (e.g. ``get_pet_v1_0_0``).
         """
         # Register all entity types in this module's globals so Strawberry can resolve them
         import sys
@@ -350,6 +399,11 @@ class GraphQLFactory:
         this_module = sys.modules[__name__]
         for schema_name, et in entity_types.items():
             setattr(this_module, et.__name__, et)
+
+        # Also register versioned types in module globals
+        if versioned_entity_types:
+            for (schema_name, _version), vet in versioned_entity_types.items():
+                setattr(this_module, vet.__name__, vet)
 
         methods: dict[str, Any] = {}
 
@@ -366,6 +420,54 @@ class GraphQLFactory:
                     schema_name, et, reg, get_db, event_bus
                 )
                 methods[f"list_{schema_name}s"] = strawberry.field(resolver=list_fn)
+
+            # Versioned query methods
+            if versioned_entity_types:
+                for (schema_name, version), vet in versioned_entity_types.items():
+                    reg = registrations.get(schema_name)
+                    if reg is None:
+                        continue
+                    sanitized = version.replace(".", "_")
+                    ver_suffix = f"_v{sanitized}"
+
+                    get_fn_v = self._make_get_resolver(
+                        schema_name,
+                        vet,
+                        reg,
+                        get_db,
+                        event_bus,
+                        schema_version=version,
+                    )
+                    get_fn_v.__name__ = f"get_{schema_name}{ver_suffix}"
+                    get_fn_v.__annotations__ = {
+                        "info": Info,
+                        "entity_id": str,
+                        "return": Optional[vet],  # type: ignore[valid-type]
+                    }
+                    methods[f"get_{schema_name}{ver_suffix}"] = strawberry.field(
+                        resolver=get_fn_v
+                    )
+
+                    list_fn_v = self._make_list_resolver(
+                        schema_name,
+                        vet,
+                        reg,
+                        get_db,
+                        event_bus,
+                        schema_version=version,
+                    )
+                    list_fn_v.__name__ = f"list_{schema_name}s{ver_suffix}"
+                    list_fn_v.__annotations__ = {
+                        "info": Info,
+                        "skip": int,
+                        "limit": int,
+                        "where": Optional[strawberry.scalars.JSON],
+                        "sort": Optional[str],
+                        "return": List[vet],  # type: ignore[valid-type]
+                    }
+                    methods[f"list_{schema_name}s{ver_suffix}"] = strawberry.field(
+                        resolver=list_fn_v
+                    )
 
             dag_fn = self._make_schema_dag_resolver(schema_registry)
             methods["schema_dag"] = strawberry.field(resolver=dag_fn)
@@ -406,15 +508,103 @@ class GraphQLFactory:
                     resolver=delete_fn
                 )
 
+            # Versioned mutation methods
+            if versioned_entity_types:
+                for (schema_name, version), vet in versioned_entity_types.items():
+                    reg = registrations.get(schema_name)
+                    if reg is None:
+                        continue
+                    sanitized = version.replace(".", "_")
+                    ver_suffix = f"_v{sanitized}"
+                    pascal = self._to_pascal(schema_name)
+                    versioned_pascal = vet.__name__  # e.g. PetV1_0_0 or Pet (latest)
+
+                    try:
+                        ver_schema = schema_registry.get_schema(schema_name, version)
+                    except (ValueError, AttributeError):
+                        continue
+                    ver_properties = ver_schema.get("properties", {})
+                    ver_required = ver_schema.get("required", [])
+
+                    # Use versioned pascal for input type names to avoid collisions
+                    create_input_v, update_input_v = self._create_input_types(
+                        versioned_pascal, ver_properties, ver_required
+                    )
+                    setattr(this_module, create_input_v.__name__, create_input_v)
+                    setattr(this_module, update_input_v.__name__, update_input_v)
+
+                    create_fn_v = self._make_create_resolver(
+                        schema_name,
+                        vet,
+                        create_input_v,
+                        reg,
+                        get_db,
+                        event_bus,
+                        schema_version=version,
+                    )
+                    create_fn_v.__name__ = f"create_{schema_name}{ver_suffix}"
+                    create_fn_v.__annotations__ = {
+                        "info": Info,
+                        "input": create_input_v,
+                        "return": vet,
+                    }
+                    methods[f"create_{schema_name}{ver_suffix}"] = strawberry.mutation(
+                        resolver=create_fn_v
+                    )
+
+                    update_fn_v = self._make_update_resolver(
+                        schema_name,
+                        vet,
+                        update_input_v,
+                        reg,
+                        get_db,
+                        event_bus,
+                        schema_version=version,
+                    )
+                    update_fn_v.__name__ = f"update_{schema_name}{ver_suffix}"
+                    update_fn_v.__annotations__ = {
+                        "info": Info,
+                        "entity_id": str,
+                        "input": update_input_v,
+                        "return": Optional[vet],
+                    }
+                    methods[f"update_{schema_name}{ver_suffix}"] = strawberry.mutation(
+                        resolver=update_fn_v
+                    )
+
+                    delete_fn_v = self._make_delete_resolver(
+                        schema_name,
+                        reg,
+                        get_db,
+                        event_bus,
+                        schema_version=version,
+                    )
+                    delete_fn_v.__name__ = f"delete_{schema_name}{ver_suffix}"
+                    delete_fn_v.__annotations__ = {
+                        "info": Info,
+                        "entity_id": str,
+                        "return": bool,
+                    }
+                    methods[f"delete_{schema_name}{ver_suffix}"] = strawberry.mutation(
+                        resolver=delete_fn_v
+                    )
+
         ns = {**methods}
         cls = type(class_name, (), ns)
         return strawberry.type(cls)
 
     def _make_get_resolver(
-        self, schema_name, entity_type, registration, get_db, event_bus=None
-    ):
+        self,
+        schema_name: str,
+        entity_type: type,
+        registration: Any,
+        get_db: Any,
+        event_bus: Any = None,
+        schema_version: str | None = None,
+    ) -> Any:
         et = entity_type
         reg = registration
+        _schema_version = schema_version
 
         async def resolver(info: Info, entity_id: str) -> Optional[et]:  # type: ignore
             db = await _resolve_db(info, get_db)
@@ -433,6 +623,7 @@ class GraphQLFactory:
                 entity=entity,
                 db=db,
                 info=info,
+                schema_version=_schema_version,
             )
 
             from slip_stream.core.operation import OperationExecutor
@@ -454,10 +645,17 @@ class GraphQLFactory:
         return resolver
 
     def _make_list_resolver(
-        self, schema_name, entity_type, registration, get_db, event_bus=None
-    ):
+        self,
+        schema_name: str,
+        entity_type: type,
+        registration: Any,
+        get_db: Any,
+        event_bus: Any = None,
+        schema_version: str | None = None,
+    ) -> Any:
         et = entity_type
         reg = registration
+        _schema_version = schema_version
 
         async def resolver(
             info: Info,
@@ -511,6 +709,7 @@ class GraphQLFactory:
                 filter_criteria=filter_criteria,
                 sort_by=sort_by,
                 sort_order=sort_order,
+                schema_version=_schema_version,
             )
 
             from slip_stream.core.operation import OperationExecutor
@@ -530,22 +729,24 @@ class GraphQLFactory:
             "limit": int,
             "where": Optional[strawberry.scalars.JSON],
             "sort": Optional[str],
-            "return": List[et],
+            "return": List[et],  # type: ignore[valid-type]
         }
         return resolver
 
     def _make_create_resolver(
         self,
-        schema_name,
-        entity_type,
-        create_input,
-        registration,
-        get_db,
-        event_bus=None,
-    ):
+        schema_name: str,
+        entity_type: type,
+        create_input: type,
+        registration: Any,
+        get_db: Any,
+        event_bus: Any = None,
+        schema_version: str | None = None,
+    ) -> Any:
         et = entity_type
         ci = create_input
         reg = registration
+        _schema_version = schema_version
 
         async def resolver(info: Info, input: ci) -> et:  # type: ignore
             db = await _resolve_db(info, get_db)
@@ -559,6 +760,7 @@ class GraphQLFactory:
                 data=data,
                 db=db,
                 info=info,
+                schema_version=_schema_version,
             )
 
             from slip_stream.core.operation import OperationExecutor
@@ -577,16 +779,18 @@ class GraphQLFactory:
 
     def _make_update_resolver(
         self,
-        schema_name,
-        entity_type,
-        update_input,
-        registration,
-        get_db,
-        event_bus=None,
-    ):
+        schema_name: str,
+        entity_type: type,
+        update_input: type,
+        registration: Any,
+        get_db: Any,
+        event_bus: Any = None,
+        schema_version: str | None = None,
+    ) -> Any:
         et = entity_type
         ui = update_input
         reg = registration
+        _schema_version = schema_version
 
         async def resolver(info: Info, entity_id: str, input: ui) -> Optional[et]:  # type: ignore
             db = await _resolve_db(info, get_db)
@@ -604,6 +808,7 @@ class GraphQLFactory:
                 data=data,
                 db=db,
                 info=info,
+                schema_version=_schema_version,
             )
 
             from slip_stream.core.operation import OperationExecutor
@@ -625,8 +830,16 @@ class GraphQLFactory:
         }
         return resolver
 
-    def _make_delete_resolver(self, schema_name, registration, get_db, event_bus=None):
+    def _make_delete_resolver(
+        self,
+        schema_name: str,
+        registration: Any,
+        get_db: Any,
+        event_bus: Any = None,
+        schema_version: str | None = None,
+    ) -> Any:
         reg = registration
+        _schema_version = schema_version
 
         async def resolver(info: Info, entity_id: str) -> bool:
             db = await _resolve_db(info, get_db)
@@ -646,6 +859,7 @@ class GraphQLFactory:
                 entity=entity,
                 db=db,
                 info=info,
+                schema_version=_schema_version,
             )
 
             from slip_stream.core.operation import OperationExecutor
@@ -716,6 +930,7 @@ def _build_graphql_context(
     filter_criteria: Any = None,
     sort_by: Any = None,
     sort_order: int = -1,
+    schema_version: str | None = None,
 ) -> "RequestContext":
     """Build a RequestContext for a GraphQL resolver.
 
@@ -723,6 +938,12 @@ def _build_graphql_context(
     via ``info.context["request"]``), uses ``RequestContext.from_request()``
     to get full filter-context and header negotiation.  Falls back to direct
     construction when running in tests without a real request.
+
+    Args:
+        schema_version: When provided (e.g. from a versioned resolver), the
+            resulting context's ``schema_version`` is set to this value.
+            This takes precedence over the ``X-Schema-Version`` header so
+            that versioned GraphQL methods always target the correct handler.
     """
     from slip_stream.core.context import RequestContext
 
@@ -757,6 +978,9 @@ def _build_graphql_context(
             **kwargs,
         )
         ctx.channel = "graphql"
+        # Versioned resolver overrides any header-negotiated version
+        if schema_version is not None:
+            ctx.schema_version = schema_version
         return ctx
 
     # Fallback: construct directly (e.g. in tests without real HTTP)
@@ -773,6 +997,7 @@ def _build_graphql_context(
         operation=operation,  # type: ignore[arg-type]
         schema_name=schema_name,
         channel="graphql",
+        schema_version=schema_version,
         **kwargs,
     )
 
