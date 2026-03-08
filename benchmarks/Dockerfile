@@ -15,6 +15,9 @@ ENV BENCH_PORT=8100
 ENV BENCH_MONGO_URI=mongodb://mongo:27017
 ENV BENCH_DB_NAME=slip_stream_bench
 
+RUN useradd --create-home appuser
+USER appuser
+
 EXPOSE 8100
 
 HEALTHCHECK --interval=5s --timeout=3s --retries=10 \
