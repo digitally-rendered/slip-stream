@@ -75,6 +75,8 @@ jobs:
         run: |
           BENCH_MONGO_URI=mongodb://localhost:27017 \
           BENCH_DB_NAME=slip_stream_bench_ci \
+          BENCH_GRAPHQL=1 \
+          BENCH_GRAPHQL_VERSIONED=1 \
           poetry run uvicorn benchmarks.app:app --host 0.0.0.0 --port 8100 &
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8100/health > /dev/null 2>&1; then
@@ -91,6 +93,14 @@ jobs:
             --env "SCENARIO=${K6_SCENARIO}" \
             --summary-export=benchmarks/results/ci-summary.json \
             --out json=benchmarks/results/ci-raw.json
+        continue-on-error: true
+
+      - name: Run GraphQL k6 benchmark
+        run: |
+          k6 run benchmarks/k6/graphql_perf.js \
+            --env BASE_URL=http://localhost:8100/graphql \
+            --env "SCENARIO=${K6_SCENARIO}" \
+            --summary-export=benchmarks/results/graphql-ci-summary.json
         continue-on-error: true
 
       - name: Upload benchmark results

@@ -109,6 +109,7 @@ class SlipStream:
         tracer_provider: Optional[Any] = None,
         graphql_max_depth: int = 10,
         graphql_introspection: bool = True,
+        graphql_versioned: bool = False,
         cors_origins: Optional[List[str]] = None,
     ) -> None:
         # Merge config values (constructor args override config file values)
@@ -150,6 +151,7 @@ class SlipStream:
         # GraphQL security
         self._graphql_max_depth = graphql_max_depth
         self._graphql_introspection = graphql_introspection
+        self._graphql_versioned = graphql_versioned
 
         # CORS
         self._cors_origins = cors_origins or (
@@ -468,6 +470,7 @@ class SlipStream:
                 event_bus=self._event_bus,
                 max_query_depth=self._graphql_max_depth,
                 allow_introspection=self._graphql_introspection,
+                versioned=self._graphql_versioned,
             )
             self.app.include_router(gql_router, prefix=self._graphql_prefix)
             logger.info("GraphQL API mounted at %s", self._graphql_prefix)

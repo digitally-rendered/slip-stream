@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BadSchema",
+  "description": "A BadSchema entity.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "entity_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "type": "string", "default": "1.0.0" },
+    "record_version": { "type": "integer", "default": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "deleted_at": { "type": "string", "format": "date-time" },
+    "created_by": { "type": "string" },
+    "updated_by": { "type": "string" },
+    "deleted_by": { "type": "string" },
+    "name": {
+      "type": "string",
+      "description": "Name of the badschema"
+    }
+  }
+}

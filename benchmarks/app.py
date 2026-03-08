@@ -4,13 +4,15 @@ Run with:
     BENCH_PORT=8100 poetry run uvicorn benchmarks.app:app --port 8100
 
 Environment variables:
-    BENCH_MONGO_URI   — MongoDB connection string (default: mongodb://localhost:27017)
-    BENCH_DB_NAME     — Database name (default: slip_stream_bench)
-    BENCH_PORT        — Server port (default: 8100)
-    BENCH_SCHEMA_DIR  — Schema directory (default: benchmarks/schemas)
-    BENCH_BACKEND     — Storage backend: mongo or sql (default: mongo)
-    BENCH_SQL_URL     — SQL connection string for sql backend
-    BENCH_STREAM      — Stream adapter: none, memory (default: none)
+    BENCH_MONGO_URI          — MongoDB connection string (default: mongodb://localhost:27017)
+    BENCH_DB_NAME            — Database name (default: slip_stream_bench)
+    BENCH_PORT               — Server port (default: 8100)
+    BENCH_SCHEMA_DIR         — Schema directory (default: benchmarks/schemas)
+    BENCH_BACKEND            — Storage backend: mongo or sql (default: mongo)
+    BENCH_SQL_URL            — SQL connection string for sql backend
+    BENCH_STREAM             — Stream adapter: none, memory (default: none)
+    BENCH_GRAPHQL            — Enable GraphQL API: 1 or true (default: off)
+    BENCH_GRAPHQL_VERSIONED  — Expose per-version GraphQL types: 1 or true (default: off)
 """
 
 import os
@@ -27,6 +29,12 @@ DB_NAME = os.environ.get("BENCH_DB_NAME", "slip_stream_bench")
 BACKEND = os.environ.get("BENCH_BACKEND", "mongo")
 SQL_URL = os.environ.get("BENCH_SQL_URL", "")
 STREAM = os.environ.get("BENCH_STREAM", "none")
+GRAPHQL = os.environ.get("BENCH_GRAPHQL", "").lower() in ("1", "true", "yes")
+GRAPHQL_VERSIONED = os.environ.get("BENCH_GRAPHQL_VERSIONED", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def create_app() -> FastAPI:
@@ -42,6 +50,8 @@ def create_app() -> FastAPI:
         "database_name": DB_NAME,
         "structured_errors": True,
         "get_current_user": _noop_user,
+        "graphql": GRAPHQL,
+        "graphql_versioned": GRAPHQL_VERSIONED,
     }
 
     if BACKEND == "sql" and SQL_URL:

@@ -65,6 +65,8 @@ jobs:
         run: |
           BENCH_MONGO_URI=mongodb://localhost:27017 \
           BENCH_DB_NAME=slip_stream_fuzz_ci \
+          BENCH_GRAPHQL=1 \
+          BENCH_GRAPHQL_VERSIONED=1 \
           poetry run uvicorn benchmarks.app:app --port 8100 &
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8100/docs > /dev/null 2>&1; then
@@ -84,6 +86,30 @@ jobs:
             --mode "${FUZZ_MODE_ARG}" \
             --max-examples "${MAX_EXAMPLES_ARG}" \
             --output benchmarks/results/fuzz-ci.json
+        continue-on-error: true
+
+      - name: Run GraphQL fuzz tests
+        run: |
+          python benchmarks/fuzz/run_graphql_fuzz.py \
+            --url http://localhost:8100/graphql \
+            --mode all \
+            --output benchmarks/results/graphql-fuzz-ci.json
+        continue-on-error: true
+
+      - name: Run MCP fuzz tests
+        run: |
+          python benchmarks/fuzz/run_mcp_fuzz.py \
+            --cmd "poetry run python -m slip_stream.mcp.server --schema-dir benchmarks/schemas" \
+            --mode all \
+            --output benchmarks/results/mcp-fuzz-ci.json
+        continue-on-error: true
+
+      - name: Run stream event validation
+        run: |
+          poetry run python benchmarks/fuzz/run_stream_fuzz.py \
+            --schema-dir benchmarks/schemas \
+            --mode all \
+            --output benchmarks/results/stream-fuzz-ci.json
         continue-on-error: true
 
       - name: Run stream micro-benchmarks

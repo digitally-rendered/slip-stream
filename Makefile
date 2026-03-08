@@ -1,6 +1,7 @@
 .PHONY: test lint typecheck coverage check docs docs-serve clean integration integration-up integration-down integration-test \
 	bench-perf bench-load bench-breaking bench-constrained bench-limits bench-compat bench-compat-docker bench-compare-docker bench-clean \
-	bench-fuzz bench-stream bench-stream-e2e
+	bench-fuzz bench-stream bench-stream-e2e \
+	bench-graphql-fuzz bench-graphql-perf bench-mcp-fuzz bench-mcp-perf bench-stream-fuzz
 
 # Run tests
 test:
@@ -144,6 +145,34 @@ bench-stream-e2e:
 	status=$$?; \
 	docker compose -f benchmarks/docker-compose.streams.yml down -v; \
 	exit $$status
+
+# --- GraphQL testing targets ---
+
+# Run GraphQL fuzz tests against local app (must be running on :8100)
+bench-graphql-fuzz:
+	python benchmarks/fuzz/run_graphql_fuzz.py --url http://localhost:8100/graphql --mode all --output benchmarks/results/graphql-fuzz-results.json
+
+# Run GraphQL k6 performance tests (app must be running on :8100)
+bench-graphql-perf:
+	k6 run benchmarks/k6/graphql_perf.js --env BASE_URL=http://localhost:8100/graphql
+
+# --- MCP testing targets ---
+
+# Run MCP fuzz tests
+bench-mcp-fuzz:
+	python benchmarks/fuzz/run_mcp_fuzz.py \
+		--cmd "poetry run python -m slip_stream.mcp.server --schema-dir benchmarks/schemas" \
+		--mode all --output benchmarks/results/mcp-fuzz-results.json
+
+# Run MCP performance micro-benchmarks
+bench-mcp-perf:
+	poetry run pytest benchmarks/mcp/ --benchmark-only -v --benchmark-json=benchmarks/results/mcp-bench.json
+
+# --- Stream validation targets ---
+
+# Run stream event schema validation tests
+bench-stream-fuzz:
+	poetry run python benchmarks/fuzz/run_stream_fuzz.py --schema-dir benchmarks/schemas --mode all --output benchmarks/results/stream-fuzz-results.json
 
 # Clean benchmark results
 bench-clean:
